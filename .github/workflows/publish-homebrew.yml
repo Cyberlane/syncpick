@@ -1,0 +1,80 @@
+name: Publish Homebrew formula
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Update Homebrew tap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: Cyberlane/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Generate formula from the published release
+        id: formula
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          ARCHIVE_URL: https://github.com/${{ github.repository }}/archive/refs/tags/${{ github.event.release.tag_name }}.tar.gz
+        run: |
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "Release tag must use vMAJOR.MINOR.PATCH (received: $TAG)" >&2; exit 1 ;;
+          esac
+
+          version="${TAG#v}"
+          archive="$RUNNER_TEMP/syncpick-${TAG}.tar.gz"
+          curl --fail --location --retry 3 --output "$archive" "$ARCHIVE_URL"
+          checksum="$(sha256sum "$archive" | awk '{print $1}')"
+          formula="tap/Formula/syncpick.rb"
+          mkdir -p "$(dirname "$formula")"
+
+          printf '%s\n' \
+            'class Syncpick < Formula' \
+            '  desc "Interactive fzf picker for syncing selected SSH folders with rsync"' \
+            '  homepage "https://github.com/Cyberlane/syncpick"' \
+            "  url \"$ARCHIVE_URL\"" \
+            "  version \"$version\"" \
+            "  sha256 \"$checksum\"" \
+            '  license "MIT"' \
+            '' \
+            '  depends_on "fzf"' \
+            '  depends_on "rsync"' \
+            '  depends_on "zsh"' \
+            '' \
+            '  def install' \
+            '    inreplace "syncpick", "#!/bin/zsh", "#!#{Formula["zsh"].opt_bin}/zsh"' \
+            '    bin.install "syncpick"' \
+            '  end' \
+            '' \
+            '  test do' \
+            '    assert_match version.to_s, shell_output("#{bin}/syncpick --version")' \
+            '  end' \
+            'end' > "$formula"
+
+          ruby -c "$formula"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Commit formula update
+        env:
+          VERSION: ${{ steps.formula.outputs.version }}
+        run: |
+          if git -C tap ls-files --error-unmatch Formula/syncpick.rb >/dev/null 2>&1 \
+            && git -C tap diff --quiet -- Formula/syncpick.rb; then
+            echo "Formula is already current."
+            exit 0
+          fi
+
+          git -C tap config user.name "Cyberlane Release"
+          git -C tap config user.email "release@cyberlane.com"
+          git -C tap add Formula/syncpick.rb
+          git -C tap commit -m "syncpick $VERSION"
+          git -C tap push origin HEAD:main
