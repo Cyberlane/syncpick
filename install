@@ -1,0 +1,24 @@
+#!/bin/zsh
+set -euo pipefail
+
+repo_dir="${0:A:h}"
+bin_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+alias_name=""
+
+case "${1:-}" in
+  --with-alias) alias_name="sp" ;;
+  --help|-h)
+    print 'Usage: ./install [--with-alias]'
+    print 'Installs syncpick into ~/.local/bin (or $XDG_BIN_HOME).'
+    ;;
+  '') ;;
+  *) print -u2 -- "Unknown option: $1"; exit 2 ;;
+esac
+
+mkdir -p "$bin_dir"
+ln -sf "$repo_dir/syncpick" "$bin_dir/syncpick"
+print "Installed $bin_dir/syncpick -> $repo_dir/syncpick"
+if [[ -n "$alias_name" ]]; then
+  ln -sf "$repo_dir/syncpick" "$bin_dir/$alias_name"
+  print "Installed $bin_dir/$alias_name -> $repo_dir/syncpick"
+fi

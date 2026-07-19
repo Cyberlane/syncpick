@@ -1,0 +1,439 @@
+#!/bin/zsh
+# syncpick — choose remote folders and copy them locally with rsync.
+set -euo pipefail
+
+VERSION="0.1.0"
+APP_NAME="syncpick"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_NAME"
+PROFILE_DIR="$CONFIG_HOME/profiles"
+STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/$APP_NAME"
+LAST_PROFILE_FILE="$STATE_HOME/last-profile"
+
+dry_run=0
+assume_yes=0
+delete_files=""
+inplace=""
+destination="."
+requested_profile=""
+
+usage() {
+  cat <<EOF
+Usage: syncpick [options] [destination]
+
+Interactively choose a saved server, select remote folders, then copy them
+into destination (the current directory by default).
+
+Options:
+  -n, --dry-run             Show what would transfer without changing files
+  -y, --yes                 Skip the confirmation prompt
+      --delete              Remove local files absent from the selected source
+      --no-delete           Keep local files absent from the selected source
+      --inplace             Write directly to destination files (advanced)
+      --no-inplace          Use rsync's safer temporary-file behavior
+  -s, --server PROFILE      Use a saved profile without choosing one
+      --init                Create a profile with a guided setup
+      --configure           Add, edit, or remove profiles
+      --version             Print the version
+  -h, --help                Show this help
+
+Configuration: $CONFIG_HOME
+State:         $STATE_HOME
+EOF
+}
+
+die() { print -u2 -- "$*"; exit 1; }
+
+ensure_storage() {
+  umask 077
+  mkdir -p "$PROFILE_DIR" "$STATE_HOME"
+  chmod 700 "$CONFIG_HOME" "$PROFILE_DIR" "$STATE_HOME" 2>/dev/null || true
+}
+
+require_fzf() {
+  command -v fzf >/dev/null 2>&1 || die "fzf is required but was not found in PATH."
+}
+
+profile_file() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "Profile names use letters, numbers, hyphens, and underscores."
+  print -r -- "$PROFILE_DIR/$1.conf"
+}
+
+profile_ids() {
+  local file
+  for file in "$PROFILE_DIR"/*.conf(N); do
+    print -r -- "${${file:t}%.conf}"
+  done
+}
+
+prompt_value() {
+  local label="$1" default="${2:-}" value
+  if [[ -n "$default" ]]; then
+    print -nu2 -- "$label [$default]: "
+  else
+    print -nu2 -- "$label: "
+  fi
+  read -r value
+  print -r -- "${value:-$default}"
+}
+
+prompt_yes_no() {
+  local label="$1" default="$2" answer hint
+  [[ "$default" == 1 ]] && hint="Y/n" || hint="y/N"
+  print -nu2 -- "$label [$hint] "
+  read -r answer
+  [[ -z "$answer" ]] && [[ "$default" == 1 ]] && return 0
+  [[ "$answer" =~ '^[Yy]$' ]]
+}
+
+write_profile() {
+  local id="$1" file
+  file="$(profile_file "$id")"
+  {
+    print -r -- "# Created by syncpick. These values are shell-quoted by the app."
+    print -r -- "profile_name=${(qqq)profile_name}"
+    print -r -- "profile_host=${(qqq)profile_host}"
+    print -r -- "profile_rsync_bin=${(qqq)profile_rsync_bin}"
+    print -r -- "profile_ssh_bin=${(qqq)profile_ssh_bin}"
+    print -r -- "profile_delete=${(qqq)profile_delete}"
+    print -r -- "profile_inplace=${(qqq)profile_inplace}"
+    print -r -- "profile_path_highlighting=${(qqq)profile_path_highlighting}"
+    print -r -- "profile_queue_path_display=${(qqq)profile_queue_path_display}"
+    print -r -- "profile_sources=("
+    local source
+    for source in "${profile_sources[@]}"; do
+      print -r -- "  ${(qqq)source}"
+    done
+    print -r -- ")"
+  } > "$file"
+  chmod 600 "$file" 2>/dev/null || true
+}
+
+load_profile() {
+  local id="$1" file
+  file="$(profile_file "$id")"
+  [[ -f "$file" ]] || die "Profile '$id' was not found. Run syncpick --configure to add it."
+  unset profile_name profile_host profile_rsync_bin profile_ssh_bin profile_delete profile_inplace profile_path_highlighting profile_queue_path_display profile_sources
+  source "$file"
+  [[ -n "${profile_name:-}" && -n "${profile_host:-}" && "${#profile_sources[@]:-0}" -gt 0 ]] || die "Profile '$id' is incomplete. Edit it with syncpick --configure."
+  profile_path_highlighting="${profile_path_highlighting:-1}"
+  profile_queue_path_display="${profile_queue_path_display:-short}"
+  case "$profile_queue_path_display" in
+    full|short|name) ;;
+    *) die "Profile '$id' has an invalid queue path display setting. Edit it with syncpick --configure." ;;
+  esac
+}
+
+new_profile() {
+  local id base_id suffix source
+  ensure_storage
+  print -u2 ""
+  print -u2 "Add a sync server"
+  print -u2 ""
+  profile_name="$(prompt_value 'Server name' 'My server')"
+  profile_host="$(prompt_value 'SSH host (host, host alias, or user@host)')"
+  [[ -n "$profile_host" ]] || die "An SSH host is required."
+  print -u2 ""
+  print -u2 'Add the remote folders whose immediate subfolders you want to browse.'
+  print -u2 'For example, /srv/media/anime shows each series inside that folder.'
+  profile_sources=()
+  profile_rsync_bin=""
+  profile_ssh_bin=""
+  while true; do
+    source="$(prompt_value 'Remote folder (for example: /srv/media)')"
+    [[ -n "$source" ]] || { print -u2 'A remote folder is required.'; continue; }
+    if ! validate_source_dir "$source"; then
+      prompt_yes_no 'Keep this folder anyway?' 0 || continue
+    fi
+    profile_sources+=("$source")
+    prompt_yes_no 'Add another remote folder?' 0 || break
+  done
+  profile_delete=0
+  profile_inplace=0
+  profile_path_highlighting=1
+  profile_queue_path_display=short
+  base_id="$(print -r -- "$profile_name" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//')"
+  base_id="${base_id:-server}"
+  id="$base_id"
+  suffix=2
+  while [[ -e "$PROFILE_DIR/$id.conf" ]]; do
+    id="$base_id-$suffix"
+    (( suffix++ ))
+  done
+  write_profile "$id"
+  print -u2 ""
+  print -u2 "Saved '$profile_name' as profile '$id'."
+  print -u2 'syncpick will auto-detect ssh and rsync; advanced options are in Settings.'
+}
+
+queue_path_display_label() {
+  case "$profile_queue_path_display" in
+    full) print -r -- 'full path' ;;
+    short) print -r -- 'shortened path' ;;
+    name) print -r -- 'folder name only' ;;
+  esac
+}
+
+short_queue_path() {
+  local path="$1" parent
+  parent="${path%/*}"
+  if [[ -z "$parent" || "$parent" == "/" ]]; then
+    print -r -- "$path"
+  else
+    print -r -- "…/${parent##*/}/${path##*/}"
+  fi
+}
+
+format_path() {
+  local path="$1" parent basename
+  if (( ! profile_path_highlighting )); then
+    print -r -- "$path"
+    return
+  fi
+  parent="${path%/*}/"
+  basename="${path##*/}"
+  if [[ "$parent" == "/" ]]; then
+    print -r -- $'\e[1;36m'"$basename"$'\e[0m'
+  else
+    print -r -- $'\e[38;5;245m'"$parent"$'\e[1;36m'"$basename"$'\e[0m'
+  fi
+}
+
+queue_path_display() {
+  local path="$1" display
+  case "$profile_queue_path_display" in
+    full) display="$path" ;;
+    short) display="$(short_queue_path "$path")" ;;
+    name) display="${path##*/}" ;;
+  esac
+  format_path "$display"
+}
+
+choose_queue_path_display() {
+  local selected
+  selected="$(print -rl -- \
+    $'Full path\tfull' \
+    $'Shortened path (…/parent/folder)\tshort' \
+    $'Folder name only\tname' | fzf --layout=reverse --delimiter=$'\t' --with-nth=1 --prompt='queue paths> ' --height=40% --border --header='Controls how checked folders appear in the queued-folder pane.' || true)"
+  [[ -n "$selected" ]] && profile_queue_path_display="${selected##*$'\t'}"
+}
+
+validate_source_dir() {
+  local source_dir="$1" validation_ssh validation_command
+  validation_ssh="$(resolve_program "${profile_ssh_bin:-}" ssh)"
+  validation_command="test -d ${(q)source_dir}"
+  if "$validation_ssh" "$profile_host" "$validation_command"; then
+    print -u2 "Verified: $source_dir"
+    return 0
+  fi
+  print -u2 "Could not verify '$source_dir' on $profile_host. Check the path and SSH access."
+  return 1
+}
+
+manage_sources() {
+  local id="$1" action selection source
+  local -a kept_sources
+  while true; do
+    action="$(print -rl -- 'Add source folder' 'Remove source folder' 'Done' | fzf --layout=reverse --prompt="sources ($id)> " --height=40% --border || true)"
+    case "$action" in
+      'Add source folder')
+        source="$(prompt_value 'Remote folder (for example: /srv/media)')"
+        [[ -n "$source" ]] || continue
+        if ! validate_source_dir "$source"; then
+          prompt_yes_no 'Keep this folder anyway?' 0 || continue
+        fi
+        if (( ${profile_sources[(I)$source]} )); then
+          print -u2 'That source folder is already in this profile.'
+          continue
+        fi
+        profile_sources+=("$source")
+        write_profile "$id"
+        ;;
+      'Remove source folder')
+        (( ${#profile_sources[@]} > 1 )) || { print -u2 'A profile needs at least one source folder.'; continue; }
+        selection="$(print -rl -- "${profile_sources[@]}" | fzf --layout=reverse --multi --prompt='remove sources> ' --height=50% --border --header='Tab selects folders to remove.' || true)"
+        [[ -n "$selection" ]] || continue
+        kept_sources=()
+        for source in "${profile_sources[@]}"; do
+          [[ "$selection" == *$'\n'"$source"$'\n'* || "$selection" == "$source" || "$selection" == "$source"$'\n'* || "$selection" == *$'\n'"$source" ]] || kept_sources+=("$source")
+        done
+        (( ${#kept_sources[@]} > 0 )) || { print -u2 'A profile needs at least one source folder.'; continue; }
+        profile_sources=("${kept_sources[@]}")
+        write_profile "$id"
+        ;;
+      'Done'|'') return ;;
+    esac
+  done
+}
+
+choose_profile() {
+  local last choices selected
+  while true; do
+    last=""
+    [[ -r "$LAST_PROFILE_FILE" ]] && last="$(<"$LAST_PROFILE_FILE")"
+    choices="$(profile_ids | while IFS= read -r id; do
+      if [[ "$id" == "$last" ]]; then print -r -- "$id"$'\t'"(last used)"; else print -r -- "$id"; fi
+    done)"
+    choices+=$'\n+ Add profile\n* Manage profiles'
+    require_fzf
+    selected="$(print -r -- "$choices" | fzf --layout=reverse --prompt='server> ' --height=40% --border --header='Enter selects. Ctrl-C cancels.' || true)"
+    [[ -n "$selected" ]] || exit 0
+    case "$selected" in
+      '+ Add profile') new_profile ;;
+      '* Manage profiles') configure ;;
+      *) print -r -- "${selected%%$'\t'*}"; return ;;
+    esac
+  done
+}
+
+choose_existing_profile() {
+  local selected
+  require_fzf
+  selected="$(profile_ids | fzf --layout=reverse --prompt='profile> ' --height=40% --border || true)"
+  [[ -n "$selected" ]] || return 1
+  print -r -- "$selected"
+}
+
+edit_profile() {
+  local id="$1" action raw_sources
+  load_profile "$id"
+  while true; do
+    require_fzf
+    action="$({
+      printf '%-28s  %s\t%s\n' 'Edit connection' "$profile_host" edit_connection
+      printf '%-28s  %s\t%s\n' 'Manage source folders' "${(j:, :)profile_sources}" manage_sources
+      printf '%-28s  %s\t%s\n' 'Set executable overrides' 'ssh/rsync paths' edit_executables
+      printf '%-28s  %s\t%s\n' 'Toggle deletion' "$([[ $profile_delete == 1 ]] && print enabled || print disabled)" toggle_deletion
+      printf '%-28s  %s\t%s\n' 'Toggle --inplace' "$([[ $profile_inplace == 1 ]] && print enabled || print disabled)" toggle_inplace
+      printf '%-28s  %s\t%s\n' 'Highlight folder names' "$([[ $profile_path_highlighting == 1 ]] && print enabled || print disabled)" toggle_path_highlighting
+      printf '%-28s  %s\t%s\n' 'Queued folder path display' "$(queue_path_display_label)" edit_queue_path_display
+      printf '%-28s\t%s\n' 'Delete profile' delete_profile
+      printf '%-28s\t%s\n' 'Done' done
+    } | fzf --layout=reverse --delimiter=$'\t' --with-nth=1 --prompt="settings ($id)> " --height=50% --border || true)"
+    case "${action##*$'\t'}" in
+      edit_connection)
+        profile_name="$(prompt_value 'Display name' "$profile_name")"
+        profile_host="$(prompt_value 'SSH host' "$profile_host")"
+        profile_rsync_bin="$(prompt_value 'rsync executable (blank = auto-detect)' "$profile_rsync_bin")"
+        profile_ssh_bin="$(prompt_value 'ssh executable (blank = auto-detect)' "$profile_ssh_bin")"
+        write_profile "$id"
+        ;;
+      manage_sources) manage_sources "$id" ;;
+      edit_executables)
+        profile_rsync_bin="$(prompt_value 'rsync executable (blank = auto-detect)' "$profile_rsync_bin")"
+        profile_ssh_bin="$(prompt_value 'ssh executable (blank = auto-detect)' "$profile_ssh_bin")"
+        write_profile "$id"
+        ;;
+      toggle_deletion) profile_delete=$(( 1 - profile_delete )); write_profile "$id" ;;
+      toggle_inplace) profile_inplace=$(( 1 - profile_inplace )); write_profile "$id" ;;
+      toggle_path_highlighting) profile_path_highlighting=$(( 1 - profile_path_highlighting )); write_profile "$id" ;;
+      edit_queue_path_display) choose_queue_path_display; write_profile "$id" ;;
+      delete_profile)
+        if prompt_yes_no "Delete profile '$id'?" 0; then rm -f -- "$(profile_file "$id")"; fi
+        return
+        ;;
+      done|'') return ;;
+    esac
+  done
+}
+
+configure() {
+  local action id
+  ensure_storage
+  while true; do
+    require_fzf
+    action="$(print -rl -- 'Add profile' 'Edit profile' 'Remove profile' 'Done' | fzf --layout=reverse --prompt='settings> ' --height=40% --border || true)"
+    case "$action" in
+      'Add profile') new_profile ;;
+      'Edit profile') if id="$(choose_existing_profile)"; then edit_profile "$id"; fi ;;
+      'Remove profile')
+        if id="$(choose_existing_profile)"; then
+          if prompt_yes_no "Delete profile '$id'?" 0; then rm -f -- "$(profile_file "$id")"; fi
+        fi
+        ;;
+      'Done'|'') return ;;
+    esac
+  done
+}
+
+resolve_program() {
+  local configured="$1" command_name="$2"
+  if [[ -n "$configured" ]]; then
+    [[ -x "$configured" ]] || die "$command_name is not executable: $configured"
+    print -r -- "$configured"
+  else
+    command -v "$command_name" 2>/dev/null || die "$command_name is required but was not found in PATH."
+  fi
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    -n|--dry-run) dry_run=1 ;;
+    -y|--yes) assume_yes=1 ;;
+    --delete) delete_files=1 ;;
+    --no-delete) delete_files=0 ;;
+    --inplace) inplace=1 ;;
+    --no-inplace) inplace=0 ;;
+    -s|--server) shift; (( $# )) || die '--server needs a profile ID.'; requested_profile="$1" ;;
+    --init) new_profile; exit 0 ;;
+    --configure) configure; exit 0 ;;
+    --version) print "$APP_NAME $VERSION"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    -*) die "Unknown option: $1" ;;
+    *) destination="$1" ;;
+  esac
+  shift
+done
+(( $# == 0 )) || destination="$1"
+
+ensure_storage
+[[ -d "$destination" ]] || die "Destination does not exist or is not a directory: $destination"
+[[ -w "$destination" ]] || die "Destination is not writable: $destination"
+
+profile_id="${requested_profile:-$(choose_profile)}"
+load_profile "$profile_id"
+ssh_bin="$(resolve_program "$profile_ssh_bin" ssh)"
+rsync_bin="$(resolve_program "$profile_rsync_bin" rsync)"
+remote_find_command="find"
+for source in "${profile_sources[@]}"; do
+  remote_find_command+=" ${(q)source}"
+done
+remote_find_command+=" -mindepth 1 -maxdepth 1 -type d -printf '%p\\n' 2>/dev/null | sort"
+remote_paths="$("$ssh_bin" "$profile_host" "$remote_find_command")" || die "Could not list folders on $profile_host. Check the profile and SSH access."
+[[ -n "$remote_paths" ]] || die "No remote folders found in this profile's source roots."
+
+require_fzf
+picker_rows="$(for path in ${(f)remote_paths}; do
+  print -r -- "$path"$'\t'"[folder] $(format_path "$path")"$'\t'"$(queue_path_display "$path")"
+done)"
+selection="$(print -r -- "$picker_rows" | fzf --ansi --layout=reverse --multi --delimiter=$'\t' --with-nth=2 --pointer='>' --marker='✓' --color='pointer:cyan,marker:green,header:yellow,info:cyan,prompt:cyan,preview-label:yellow' --prompt='syncpick> ' --height=80% --border --header=$'Tab adds/removes a ✓. Enter syncs only ✓ items; if none are checked, it syncs the cursor item.\nCtrl-P shows/hides the queued-folder pane. Destination: '"$destination" --preview='printf "%s\n" {+3}' --preview-label='Queued folders' --preview-window='right,42%,wrap,border-left' --bind='ctrl-p:toggle-preview' || true)"
+[[ -n "$selection" ]] || { print 'No selection.'; exit 0; }
+selected_paths=()
+for selected_row in ${(f)selection}; do
+  selected_paths+=("${selected_row%%$'\t'*}")
+done
+
+delete_files="${delete_files:-$profile_delete}"
+inplace="${inplace:-$profile_inplace}"
+print 'Will sync:'
+for path in "${selected_paths[@]}"; do print "  $path"; done
+print ""
+print "Server:      $profile_name ($profile_host)"
+print "Destination: $destination"
+(( dry_run )) && print 'Mode:        dry run' || print 'Mode:        real sync'
+(( delete_files )) && print 'Deletion:    enabled (--delete)' || print 'Deletion:    disabled'
+(( inplace )) && print 'Writes:      in place' || print 'Writes:      temporary files (safer)'
+if (( ! assume_yes )); then
+  prompt_yes_no 'Proceed?' 0 || { print 'Cancelled.'; exit 0; }
+fi
+
+rsync_args=(-aP -e "$ssh_bin" --protect-args)
+(( dry_run )) && rsync_args=(-n "${rsync_args[@]}")
+(( delete_files )) && rsync_args+=(--delete-delay)
+(( inplace )) && rsync_args+=(--inplace)
+for path in "${selected_paths[@]}"; do
+  print ""
+  print "Syncing $path"
+  "$rsync_bin" "${rsync_args[@]}" "${profile_host}:${path}" "$destination"
+done
+print -r -- "$profile_id" > "$LAST_PROFILE_FILE"
