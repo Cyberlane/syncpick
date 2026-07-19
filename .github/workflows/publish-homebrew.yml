@@ -77,5 +77,5 @@ jobs:
           git -C tap config user.name "Cyberlane Release"
           git -C tap config user.email "release@cyberlane.com"
           git -C tap add Formula/syncpick.rb
-          git -C tap commit -m "syncpick $VERSION"
+          git -C tap commit -m "build: release syncpick $VERSION"
           git -C tap push origin HEAD:main
