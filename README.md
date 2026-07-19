@@ -18,6 +18,16 @@ executables through `PATH`; a profile can override the `ssh` or `rsync` path.
 
 ## Install
 
+### Homebrew
+
+On macOS or Linux with [Homebrew](https://brew.sh/):
+
+```sh
+brew install Cyberlane/tap/syncpick
+```
+
+### From source
+
 Clone this repository, then run:
 
 ```sh
@@ -106,10 +116,9 @@ transfer output into public issues.
 
 ## Releases
 
-syncpick is a portable source script, so release archives and checksums are the
-initial distribution format; compiled binaries are unnecessary. Releases use
-semantic versioning. A Homebrew formula is planned after the configuration and
-release workflow have settled.
+syncpick is a portable source script, so compiled binaries are unnecessary.
+Releases use semantic versioning and are available through the Cyberlane
+Homebrew tap as well as the source repository.
 
 ## Contributing
 
