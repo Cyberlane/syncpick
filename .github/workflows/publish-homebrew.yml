@@ -42,7 +42,6 @@ jobs:
             '  desc "Interactive fzf picker for syncing selected SSH folders with rsync"' \
             '  homepage "https://github.com/Cyberlane/syncpick"' \
             "  url \"$ARCHIVE_URL\"" \
-            "  version \"$version\"" \
             "  sha256 \"$checksum\"" \
             '  license "MIT"' \
             '' \
@@ -51,7 +50,7 @@ jobs:
             '  depends_on "zsh"' \
             '' \
             '  def install' \
-            '    inreplace "syncpick", "#!/bin/zsh", "#!#{Formula["zsh"].opt_bin}/zsh"' \
+            '    inreplace "syncpick", "#!/bin/zsh", "#!#{formula_opt_bin("zsh")}/zsh"' \
             '    bin.install "syncpick"' \
             '    bin.install_symlink bin/"syncpick" => "sp"' \
             '  end' \
