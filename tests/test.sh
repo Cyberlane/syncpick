@@ -2,7 +2,8 @@
 set -eu
 
 test "$(zsh ./syncpick --version)" = "syncpick 0.1.0"
-zsh ./syncpick --help >/dev/null
+help_output="$(zsh ./syncpick --help)"
+printf '%s\n' "$help_output" | grep -F -- '-y, --yes                 Skip the confirmation prompt' >/dev/null
 zsh ./install --help >/dev/null
 test "$(zsh -c 'selected=$'"'"'media-server\t(last used)'"'"'; print -r -- "${selected%%$'"'"'\t'"'"'*}"')" = "media-server"
 test "$(zsh -c 'sources=("/srv/anime" "/srv/tv"); command="find"; for source in "${sources[@]}"; do command+=" ${(q)source}"; done; print -r -- "$command"')" = "find /srv/anime /srv/tv"

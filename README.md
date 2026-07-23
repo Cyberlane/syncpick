@@ -91,6 +91,13 @@ folder as you select it. Press `Ctrl-P` to hide or restore that pane.
 syncpick asks before a real transfer. It does **not** delete unmatched local
 files, and uses rsync's safer temporary-file behavior by default.
 
+For a non-interactive run, pass `--yes` (or `-y`) to accept the final transfer
+summary automatically:
+
+```sh
+syncpick --server home-nas --yes ~/Downloads
+```
+
 Deletion and `--inplace` writes can be set per profile in the settings TUI or
 enabled for one run:
 
