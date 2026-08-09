@@ -1,0 +1,2 @@
+# Keep routine review focused on shipped shell entrypoints.
+tests/**
