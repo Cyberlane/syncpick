@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#091613">
+    <meta name="description" content="syncpick is a fast, safe terminal picker for copying selected folders over SSH with rsync.">
+    <meta property="og:title" content="syncpick — pick folders, sync safely">
+    <meta property="og:description" content="A small Zsh and fzf workflow for selecting remote folders and syncing them locally with rsync.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://cyberlane.github.io/syncpick/">
+    <meta property="og:image" content="https://cyberlane.github.io/syncpick/assets/syncpick-mark.svg">
+    <meta name="twitter:card" content="summary">
+    <title>syncpick — pick folders, sync safely</title>
+    <link rel="icon" href="assets/syncpick-mark.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header" aria-label="Main navigation">
+      <a class="brand" href="#top" aria-label="syncpick home">
+        <img src="assets/syncpick-mark.svg" width="36" height="36" alt="">
+        <span>syncpick</span>
+      </a>
+      <nav>
+        <a href="#workflow">How it works</a>
+        <a href="#controls">Controls</a>
+        <a href="#safety">Safety</a>
+        <a class="nav-github" href="https://github.com/Cyberlane/syncpick">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Open source · v0.2.3</div>
+          <h1>Pick remote folders.<br><span>Sync them safely.</span></h1>
+          <p class="hero-lede">A focused <code>fzf</code> interface for choosing folders over SSH and copying them locally with <code>rsync</code>. No service, no database, no lock-in—just one small Zsh script.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#install">Install with Homebrew</a>
+            <a class="button button-secondary" href="https://github.com/Cyberlane/syncpick">View source <span aria-hidden="true">↗</span></a>
+          </div>
+          <ul class="hero-facts" aria-label="Project highlights">
+            <li><span aria-hidden="true">✓</span> macOS &amp; Linux</li>
+            <li><span aria-hidden="true">✓</span> Safe defaults</li>
+            <li><span aria-hidden="true">✓</span> Vim navigation</li>
+          </ul>
+        </div>
+
+        <div class="terminal-wrap" aria-label="syncpick terminal example">
+          <div class="terminal-glow" aria-hidden="true"></div>
+          <div class="terminal">
+            <div class="terminal-titlebar">
+              <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <span>syncpick — folders</span>
+              <span class="terminal-mode">NORMAL</span>
+            </div>
+            <div class="terminal-body" aria-hidden="true">
+              <div class="terminal-help">j/k move · g/G ends · i search · q quit</div>
+              <div class="terminal-list">
+                <div class="terminal-row"><span class="cursor">›</span><span class="folder">[folder]</span><span class="muted">/srv/media/</span><strong>Films</strong></div>
+                <div class="terminal-row selected"><span class="cursor">›</span><span class="folder">[folder]</span><span class="muted">/srv/media/</span><strong>Music</strong><span class="queued">✓ queued</span></div>
+                <div class="terminal-row"><span class="cursor">›</span><span class="folder">[folder]</span><span class="muted">/srv/media/</span><strong>Projects</strong></div>
+                <div class="terminal-row"><span class="cursor">›</span><span class="folder">[folder]</span><span class="muted">/srv/media/</span><strong>Photos</strong></div>
+              </div>
+              <div class="terminal-preview">
+                <span>Queued folders</span>
+                <strong>…/media/Music</strong>
+              </div>
+              <div class="terminal-footer"><span>Tab queues</span><span>Enter syncs</span><span>Ctrl-P preview</span></div>
+            </div>
+          </div>
+          <div class="terminal-note"><span aria-hidden="true">⌁</span> Your existing SSH config does the connecting.</div>
+        </div>
+      </section>
+
+      <section class="install-strip" id="install" aria-labelledby="install-title">
+        <div>
+          <p class="section-kicker">Install</p>
+          <h2 id="install-title">One command, two entrypoints.</h2>
+          <p>Homebrew installs both <code>syncpick</code> and the shorter <code>sp</code> command.</p>
+        </div>
+        <div class="command-box">
+          <code><span aria-hidden="true">$</span> brew install Cyberlane/tap/syncpick</code>
+          <button class="copy-button" type="button" data-copy="brew install Cyberlane/tap/syncpick" aria-label="Copy Homebrew install command">
+            <span class="copy-label">Copy</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="section workflow" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-heading">
+          <p class="section-kicker">The workflow</p>
+          <h2 id="workflow-title">From remote list to local copy, without losing context.</h2>
+          <p>Configure once. Pick what you need. Review exactly what will happen before rsync starts.</p>
+        </div>
+        <ol class="steps">
+          <li>
+            <span class="step-number">01</span>
+            <div><h3>Connect</h3><p>Save a friendly profile for an SSH host and one or more remote roots.</p></div>
+            <code>syncpick --init</code>
+          </li>
+          <li>
+            <span class="step-number">02</span>
+            <div><h3>Pick</h3><p>Browse immediate subfolders, move with Vim keys, and queue one or many with Tab.</p></div>
+            <code>sp ~/Downloads</code>
+          </li>
+          <li>
+            <span class="step-number">03</span>
+            <div><h3>Review &amp; sync</h3><p>Confirm the selected paths, destination, and transfer mode. Press <kbd>y</kbd> once to proceed.</p></div>
+            <code>sp --dry-run</code>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section controls-section" id="controls" aria-labelledby="controls-title">
+        <div class="section-heading compact">
+          <p class="section-kicker">Modal navigation</p>
+          <h2 id="controls-title">Navigation when you want it. Search when you need it.</h2>
+          <p>Every picker opens in NORMAL mode with the query field hidden. Ordinary typing is ignored until you deliberately enter INSERT.</p>
+        </div>
+        <div class="mode-grid">
+          <article class="mode-card normal-card">
+            <div class="mode-card-header"><span class="mode-pill">NORMAL</span><span>Move &amp; act</span></div>
+            <div class="key-grid">
+              <div><kbd>j</kbd><span>Down</span></div><div><kbd>k</kbd><span>Up</span></div>
+              <div><kbd>g</kbd><span>First</span></div><div><kbd>G</kbd><span>Last</span></div>
+              <div><kbd>Ctrl D</kbd><span>½ page down</span></div><div><kbd>Ctrl U</kbd><span>½ page up</span></div>
+              <div><kbd>i</kbd><span>Filter</span></div><div><kbd>/</kbd><span>Fresh search</span></div>
+              <div><kbd>q</kbd><span>Cancel</span></div><div><kbd>Tab</kbd><span>Queue</span></div>
+            </div>
+          </article>
+          <article class="mode-card insert-card">
+            <div class="mode-card-header"><span class="mode-pill">INSERT</span><span>Fuzzy filter</span></div>
+            <div class="search-demo" aria-hidden="true">
+              <span class="search-prompt">folders&gt;</span><span class="search-text">pro</span><span class="caret"></span>
+            </div>
+            <ul>
+              <li><kbd>i</kbd> keeps the current query</li>
+              <li><kbd>/</kbd> starts a fresh query</li>
+              <li><kbd>Esc</kbd> hides input and returns to NORMAL</li>
+              <li>Arrow keys work in both modes</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section safety-section" id="safety" aria-labelledby="safety-title">
+        <div class="safety-copy">
+          <p class="section-kicker">Safe by default</p>
+          <h2 id="safety-title">A small tool with an intentionally narrow blast radius.</h2>
+          <p>syncpick shows the selected sources and resolved destination before a real transfer. Destructive behavior stays opt-in.</p>
+          <a class="text-link" href="https://github.com/Cyberlane/syncpick#safety-defaults">Read the safety documentation <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="safety-list">
+          <div><span class="safety-icon" aria-hidden="true">⌁</span><div><h3>Preview first</h3><p><code>--dry-run</code> shows rsync’s transfer plan without writing files.</p></div></div>
+          <div><span class="safety-icon" aria-hidden="true">○</span><div><h3>No deletion by default</h3><p>Unmatched local files remain untouched unless you explicitly enable deletion.</p></div></div>
+          <div><span class="safety-icon" aria-hidden="true">✓</span><div><h3>One-key confirmation</h3><p>Review the plan, then press <kbd>y</kbd> or <kbd>n</kbd>—no extra Enter required.</p></div></div>
+          <div><span class="safety-icon" aria-hidden="true">↺</span><div><h3>Safer writes</h3><p>rsync’s temporary-file behavior remains active unless <code>--inplace</code> is requested.</p></div></div>
+        </div>
+      </section>
+
+      <section class="section details-section" aria-labelledby="details-title">
+        <div class="section-heading compact">
+          <p class="section-kicker">Built for the shell you already use</p>
+          <h2 id="details-title">Portable, inspectable, and easy to leave.</h2>
+        </div>
+        <div class="detail-grid">
+          <article><span>01</span><h3>One Zsh script</h3><p>No daemon or background service. Read it, move it, or remove it whenever you like.</p></article>
+          <article><span>02</span><h3>Your SSH setup</h3><p>Profiles store host references and roots—not passwords, keys, or passphrases.</p></article>
+          <article><span>03</span><h3>Plain local config</h3><p>XDG-based profile and state files stay in your user directories with private permissions.</p></article>
+          <article><span>04</span><h3>Standard tools</h3><p>Built around Zsh, SSH, rsync, and fzf 0.59 or newer on macOS and Linux.</p></article>
+        </div>
+      </section>
+
+      <section class="cta-section">
+        <img src="assets/syncpick-mark.svg" width="72" height="72" alt="">
+        <p class="section-kicker">Ready when your SSH config is</p>
+        <h2>Pick less. Sync with confidence.</h2>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#install">Install syncpick</a>
+          <a class="button button-secondary" href="https://github.com/Cyberlane/syncpick/releases/latest">Latest release <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top"><img src="assets/syncpick-mark.svg" width="30" height="30" alt=""><span>syncpick</span></a>
+      <p>MIT licensed. Built by <a href="https://github.com/Cyberlane">Cyberlane</a>.</p>
+      <div><a href="https://github.com/Cyberlane/syncpick">Source</a><a href="https://github.com/Cyberlane/syncpick/issues">Issues</a><a href="https://github.com/Cyberlane/syncpick/blob/main/SECURITY.md">Security</a></div>
+    </footer>
+  </body>
+</html>

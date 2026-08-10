@@ -4,6 +4,9 @@ An interactive `fzf` picker for copying selected folders from SSH servers with
 `rsync`. It is a small Zsh script: configure a server once, select it, pick the
 remote folders you want, and sync them into a local directory.
 
+[Documentation](https://cyberlane.github.io/syncpick/) ·
+[Latest release](https://github.com/Cyberlane/syncpick/releases/latest)
+
 ![syncpick's server picker](docs/syncpick-server-picker.gif)
 
 ## Requirements
