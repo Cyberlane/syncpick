@@ -3,6 +3,14 @@
 All notable changes are documented here. This project follows semantic
 versioning.
 
+## [0.2.3] - 2026-08-10
+
+- Hid and disabled query input in NORMAL mode so ordinary typing is ignored;
+  `i` and `/` reveal the query field in INSERT mode.
+- Changed interactive yes/no prompts to react to a single key without requiring
+  Enter.
+- Raised the minimum supported fzf version to 0.59 for inputless NORMAL mode.
+
 ## [0.2.2] - 2026-08-10
 
 - Fixed Vim navigation by starting every picker in a visible NORMAL mode where

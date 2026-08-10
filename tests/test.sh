@@ -96,7 +96,7 @@ write_ssh_output() {
   export SYNCPICK_TEST_SSH_OUTPUT_FILE="$ssh_output_file"
 }
 
-test "$(zsh "$repo_dir/syncpick" --version)" = "syncpick 0.2.2"
+test "$(zsh "$repo_dir/syncpick" --version)" = "syncpick 0.2.3"
 help_output=$(zsh "$repo_dir/syncpick" --help)
 assert_contains "$help_output" '-y, --yes                 Skip the final real-sync confirmation'
 assert_contains "$help_output" '--stay                Offer to sync more after a successful run'
@@ -114,10 +114,12 @@ assert_contains "$output" 'Dry run complete'
 assert_not_contains "$output" 'Proceed?'
 assert_file_contains "$log_root/fzf-server-1.input" 'Home NAS  [home-nas]'
 assert_file_contains "$log_root/fzf-server-1.args" '--disabled'
+assert_file_contains "$log_root/fzf-server-1.args" '--no-input'
 assert_file_contains "$log_root/fzf-server-1.args" ' NORMAL  j/k move  g/G ends  i search  q quit '
 assert_file_contains "$log_root/fzf-server-1.args" 'j:down,k:up,g:first,G:last,ctrl-d:half-page-down,ctrl-u:half-page-up,q:abort'
-assert_file_contains "$log_root/fzf-server-1.args" 'i:enable-search+change-border-label( INSERT  type to filter  Esc normal )'
-assert_file_contains "$log_root/fzf-server-1.args" 'esc:disable-search+change-border-label( NORMAL  j/k move  g/G ends  i search  q quit )'
+assert_file_contains "$log_root/fzf-server-1.args" 'i:show-input+enable-search+change-border-label( INSERT  type to filter  Esc normal )'
+assert_file_contains "$log_root/fzf-server-1.args" '/:clear-query+show-input+enable-search+change-border-label( INSERT  type to filter  Esc normal )'
+assert_file_contains "$log_root/fzf-server-1.args" 'esc:hide-input+disable-search+change-border-label( NORMAL  j/k move  g/G ends  i search  q quit )'
 assert_file_contains "$log_root/fzf-folders-1.args" 'j/k moves. i or / searches. Esc returns to navigation.'
 assert_file_contains "$log_root/fzf-folders-1.args" 'No folders queued.'
 assert_file_contains "$log_root/rsync-1.args" '-n'

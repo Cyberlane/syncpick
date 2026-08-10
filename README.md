@@ -11,7 +11,7 @@ remote folders you want, and sync them into a local directory.
 - Zsh
 - `ssh` with an already-working authentication setup
 - `rsync` (3.x recommended)
-- [`fzf`](https://github.com/junegunn/fzf) 0.46 or newer
+- [`fzf`](https://github.com/junegunn/fzf) 0.59 or newer
 
 syncpick works on macOS and Linux when these tools are available. It discovers
 executables through `PATH`; a profile can override the `ssh` or `rsync` path.
@@ -81,10 +81,12 @@ the cursor folder. The queue pane says explicitly when nothing is checked, and
 the confirmation screen always lists exactly what will sync.
 Every picker starts in **NORMAL** mode. Use `j`/`k` to move down and up, `g`/`G`
 to jump to the first or last item, and `Ctrl-D`/`Ctrl-U` to move half a page.
-Press `i` to filter the current list, or `/` to start a fresh search; the border
-label changes to **INSERT** while you type. Press `Esc` to return to navigation,
-`q` to cancel from NORMAL mode, or `Ctrl-C` to cancel from either mode. Arrow
-keys continue to work in both modes.
+Ordinary typing is ignored and the query field stays hidden in NORMAL. Press
+`i` to filter the current list, or `/` to start a fresh search; the query field
+appears and the border label changes to **INSERT** while you type. Press `Esc`
+to hide the query field and return to navigation, `q` to cancel from NORMAL
+mode, or `Ctrl-C` to cancel from either mode. Arrow keys continue to work in
+both modes.
 The parent portion of each path is muted and its final folder name highlighted
 by default; disable that per profile under **Highlight folder names** in
 `syncpick --configure` if you prefer plain paths. Under **Queued folder path
@@ -135,8 +137,9 @@ picker.
 
 ## Safety defaults
 
-syncpick asks before a real transfer. It does **not** delete unmatched local
-files, and uses rsync's safer temporary-file behavior by default.
+syncpick asks before a real transfer; in an interactive terminal, press `y` or
+`n` once without Enter. It does **not** delete unmatched local files, and uses
+rsync's safer temporary-file behavior by default.
 
 Pass `--yes` (or `-y`) to skip only the final real-transfer confirmation. Folder
 selection and the transfer summary remain visible:

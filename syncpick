@@ -2,7 +2,7 @@
 # syncpick — choose remote folders and copy them locally with rsync.
 set -euo pipefail
 
-VERSION="0.2.2"
+VERSION="0.2.3"
 APP_NAME="syncpick"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_NAME"
 PROFILE_DIR="$CONFIG_HOME/profiles"
@@ -59,12 +59,13 @@ run_fzf() {
   local -a navigation_args
   navigation_args=(
     --disabled
+    --no-input
     --border-label=' NORMAL  j/k move  g/G ends  i search  q quit '
     --border-label-pos=2
     --bind='j:down,k:up,g:first,G:last,ctrl-d:half-page-down,ctrl-u:half-page-up,q:abort'
-    --bind='i:enable-search+change-border-label( INSERT  type to filter  Esc normal )+unbind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
-    --bind='/:clear-query+enable-search+change-border-label( INSERT  type to filter  Esc normal )+unbind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
-    --bind='esc:disable-search+change-border-label( NORMAL  j/k move  g/G ends  i search  q quit )+rebind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
+    --bind='i:show-input+enable-search+change-border-label( INSERT  type to filter  Esc normal )+unbind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
+    --bind='/:clear-query+show-input+enable-search+change-border-label( INSERT  type to filter  Esc normal )+unbind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
+    --bind='esc:hide-input+disable-search+change-border-label( NORMAL  j/k move  g/G ends  i search  q quit )+rebind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
   )
   if [[ -n "${NO_COLOR+x}" ]]; then
     command fzf "${navigation_args[@]}" --no-color --no-bold "$@"
@@ -101,10 +102,20 @@ prompt_yes_no() {
   [[ "$default" == 1 ]] && hint="Y/n" || hint="y/N"
   while true; do
     print -nu2 -- "$label [$hint] "
-    if ! read -r answer; then
+    if [[ -t 0 ]]; then
+      if ! read -rk 1 answer; then
+        print -u2 ""
+        [[ "$default" == 1 ]]
+        return
+      fi
       print -u2 ""
-      [[ "$default" == 1 ]]
-      return
+      [[ "$answer" == $'\n' || "$answer" == $'\r' ]] && answer=""
+    else
+      if ! read -r answer; then
+        print -u2 ""
+        [[ "$default" == 1 ]]
+        return
+      fi
     fi
     case "${answer:l}" in
       y|yes) return 0 ;;
