@@ -68,15 +68,19 @@ recognizes for extensionless files. Mori does not require the executable bit
 and does not execute the interpreter. An extension takes precedence over a
 conflicting shebang.
 
-Use `--require-coverage` for review and CI commands. Exit status `4` means Mori
-found no supported files or extracted no comparison fragments. The report is
-still written and contains a deterministic `coverage` warning; classify the
-scan as not applicable or insufficiently covered, never as a clean result.
+Use `--require-coverage` for review and CI commands. For an adopted CI policy,
+also set a reviewed `--min-file-coverage`, `--max-zero-fragment-files`, and
+either `--fail-on-parse-diagnostic` or the broader `--fail-on-warning`. Exit
+status `4` means at least one configured coverage policy failed. The report is
+still written; classify the scan as not applicable or insufficiently covered,
+never as a clean result.
 
-Schema-11 reports include `file_coverage`. Inspect every supported file with
-zero fragments, along with its skipped-fragment and parse-diagnostic counts,
-before describing coverage. A successful aggregate scan does not excuse a
-supported file that contributed no comparison units.
+Schema-15 reports include `coverage` and `file_coverage`. Verify the exact
+fragment-file numerator and analyzed-file denominator, then inspect every
+supported file with zero fragments, its zero-fragment reason, boundary counts,
+skipped-fragment count, and parse-diagnostic count. Generated exclusions remain
+visible but do not enter the analyzed denominator. A successful aggregate scan
+does not excuse a supported file that contributed no comparison units.
 
 Split production and tests before the first deep review when the repository
 contains both. Start with production-oriented exclusions that match the
@@ -244,7 +248,7 @@ requires it.
 
 ## Validate the report
 
-Require `schema_version` to equal `13`. Validate the mandatory `tool` object,
+Require `schema_version` to equal `15`. Validate the mandatory `tool` object,
 including version, revision, source date, modified flag, platform, Go version,
 and normalization version. Official release binaries provide a full revision
 and source date. A version-pinned source build can report its version while
@@ -256,8 +260,11 @@ official release binary when complete provenance is required; never infer a
 revision or date from the version string. Inspect:
 
 - `warnings`: disclose every incomplete or failed input;
+- `coverage`: verify all exact file, warning, diagnostic, generated-exclusion,
+  and aggregate unsupported-extension counts against the configured policies;
 - `file_coverage`: inspect every zero-fragment file, generated classification,
-  exclusion status, skipped-fragment count, and parse-diagnostic count;
+  exclusion status, candidate and below-token-floor counts, deterministic zero
+  reason, skipped-fragment count, and parse-diagnostic count;
 - `literal_evidence`: when present, disclose positional literal drift while
   inspecting source; values are intentionally omitted and the signal does not
   alter structural similarity;
@@ -275,6 +282,11 @@ revision or date from the version string. Inspect:
   commits; do not infer nested-repository coverage from the parent entry;
 - `configuration.profile`: record the selected named defaults and verify the
   neighboring effective fields rather than assuming the profile was unmodified;
+- `configuration.scan_profile_digest`, `baseline_profile_digest`, and
+  `baseline_profile_status`: require exact schema-3 profile compatibility when
+  a baseline suppresses findings;
+- `configuration.ignore_file_evidence`: confirm that each loaded ignore source
+  has exact SHA-256 content evidence included in the scan-profile digest;
 - `focused` and `focused_occurrences`: use these exact group fields rather than
   inferring focus from sampled occurrences;
 - suppression counts: distinguish suppressed location pairs from baseline
@@ -300,8 +312,9 @@ Treat an operational error or an unexpected schema as a failed scan. Exit
 status `3` means policy findings were found with `--fail-on-match` or
 `--fail-on-focused-match`; it is not a tool crash. Use the focused policy only
 after the repository has adopted a reviewed threshold, scope, and exclusions.
-Exit status `4` means required coverage was not met and must be reported as not
-applicable or incomplete rather than as a successful clean scan.
+Exit status `4` means one or more strict coverage policies were not met and
+must be reported as not applicable or incomplete rather than as a successful
+clean scan. Coverage failure takes precedence over finding status `3`.
 
 When reviewing a change, rely on native focus ordering when available. Review
 at most 25 distinct identities deeply, not the first 25 raw location pairs.
@@ -317,18 +330,31 @@ For a configured repository with reviewed intentional candidates, use the
 explicit baseline workflow:
 
 ```sh
-mori baseline update --baseline mori-baseline.json .
+mori baseline add \
+  --baseline mori-baseline.json \
+  --identity <content-pair-id> \
+  --classification intentional \
+  --note 'Reviewed with the owning team' \
+  .
 mori scan --baseline mori-baseline.json --fail-on-match .
 mori baseline prune --baseline mori-baseline.json --check .
 ```
 
-Review the baseline diff before committing an update. `baseline update` and
-`baseline prune` scan untruncated internally; ordinary exploratory scans
-should still use a bounded `--max-groups` value. Content scope is the default:
-one accepted normalized content-pair identity can suppress identical copies in
-new locations. Use `baseline update --baseline-scope path` when copied code in
-a new file must reappear for review. A missing or incompatible baseline is an
-operational failure, not an empty baseline.
+Prefer selective `baseline add` after inspecting the identity. Use
+`baseline edit` for durable notes or classifications and `baseline remove` to
+revoke acceptance. `baseline update` is preview-only unless `--accept-all` is
+explicit. Mutations use complete internal reports and reject warnings unless
+each reviewed kind is repeated with `--allow-warning`.
+
+Schema-3 baselines bind acceptance to the effective scan-profile digest.
+Require `configuration.baseline_profile_status` to be `compatible` in strict
+gates. Schema-1 and schema-2 baselines remain readable with a warning, but use
+`baseline migrate --accept-profile` before mutation. Content scope is the
+default: one accepted normalized content-pair identity can suppress identical
+copies in new locations. Use path scope when copied code in a new file must
+reappear; selective add then accepts all exact scored path pairs for that
+identity. A missing, mismatched, or tampered baseline is an operational
+failure, not an empty baseline.
 
 ## Inspect before concluding
 
