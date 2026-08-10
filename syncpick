@@ -2,7 +2,7 @@
 # syncpick — choose remote folders and copy them locally with rsync.
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 APP_NAME="syncpick"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_NAME"
 PROFILE_DIR="$CONFIG_HOME/profiles"
@@ -11,6 +11,7 @@ LAST_PROFILE_FILE="$STATE_HOME/last-profile"
 
 dry_run=0
 assume_yes=0
+stay_open=0
 delete_files=""
 inplace=""
 destination="."
@@ -25,7 +26,8 @@ into destination (the current directory by default).
 
 Options:
   -n, --dry-run             Show what would transfer without changing files
-  -y, --yes                 Skip the confirmation prompt
+  -y, --yes                 Skip the final real-sync confirmation
+      --stay                Offer to sync more after a successful run
       --delete              Remove local files absent from the selected source
       --no-delete           Keep local files absent from the selected source
       --inplace             Write directly to destination files (advanced)
@@ -51,6 +53,14 @@ ensure_storage() {
 
 require_fzf() {
   command -v fzf >/dev/null 2>&1 || die "fzf is required but was not found in PATH."
+}
+
+run_fzf() {
+  if [[ -n "${NO_COLOR+x}" ]]; then
+    command fzf --no-color --no-bold "$@"
+  else
+    command fzf "$@"
+  fi
 }
 
 profile_file() {
@@ -79,10 +89,20 @@ prompt_value() {
 prompt_yes_no() {
   local label="$1" default="$2" answer hint
   [[ "$default" == 1 ]] && hint="Y/n" || hint="y/N"
-  print -nu2 -- "$label [$hint] "
-  read -r answer
-  [[ -z "$answer" ]] && [[ "$default" == 1 ]] && return 0
-  [[ "$answer" =~ '^[Yy]$' ]]
+  while true; do
+    print -nu2 -- "$label [$hint] "
+    if ! read -r answer; then
+      print -u2 ""
+      [[ "$default" == 1 ]]
+      return
+    fi
+    case "${answer:l}" in
+      y|yes) return 0 ;;
+      n|no) return 1 ;;
+      '') [[ "$default" == 1 ]]; return ;;
+      *) print -u2 'Please answer yes or no.' ;;
+    esac
+  done
 }
 
 write_profile() {
@@ -160,9 +180,20 @@ new_profile() {
     (( suffix++ ))
   done
   write_profile "$id"
+  created_profile_id="$id"
   print -u2 ""
   print -u2 "Saved '$profile_name' as profile '$id'."
   print -u2 'syncpick will auto-detect ssh and rsync; advanced options are in Settings.'
+}
+
+profile_rows() {
+  local last="${1:-}" id suffix
+  for id in ${(f)$(profile_ids)}; do
+    load_profile "$id"
+    suffix=""
+    [[ "$id" == "$last" ]] && suffix='  (last used)'
+    printf '%s\t%s  [%s]%s\n' "$id" "$profile_name" "$id" "$suffix"
+  done
 }
 
 queue_path_display_label() {
@@ -174,23 +205,23 @@ queue_path_display_label() {
 }
 
 short_queue_path() {
-  local path="$1" parent
-  parent="${path%/*}"
+  local folder_path="$1" parent
+  parent="${folder_path%/*}"
   if [[ -z "$parent" || "$parent" == "/" ]]; then
-    print -r -- "$path"
+    print -r -- "$folder_path"
   else
-    print -r -- "…/${parent##*/}/${path##*/}"
+    print -r -- "…/${parent##*/}/${folder_path##*/}"
   fi
 }
 
 format_path() {
-  local path="$1" parent basename
-  if (( ! profile_path_highlighting )); then
-    print -r -- "$path"
+  local folder_path="$1" parent basename
+  if (( ! profile_path_highlighting )) || [[ -n "${NO_COLOR+x}" ]]; then
+    print -r -- "$folder_path"
     return
   fi
-  parent="${path%/*}/"
-  basename="${path##*/}"
+  parent="${folder_path%/*}/"
+  basename="${folder_path##*/}"
   if [[ "$parent" == "/" ]]; then
     print -r -- $'\e[1;36m'"$basename"$'\e[0m'
   else
@@ -199,11 +230,11 @@ format_path() {
 }
 
 queue_path_display() {
-  local path="$1" display
+  local folder_path="$1" display
   case "$profile_queue_path_display" in
-    full) display="$path" ;;
-    short) display="$(short_queue_path "$path")" ;;
-    name) display="${path##*/}" ;;
+    full) display="$folder_path" ;;
+    short) display="$(short_queue_path "$folder_path")" ;;
+    name) display="${folder_path##*/}" ;;
   esac
   format_path "$display"
 }
@@ -213,8 +244,9 @@ choose_queue_path_display() {
   selected="$(print -rl -- \
     $'Full path\tfull' \
     $'Shortened path (…/parent/folder)\tshort' \
-    $'Folder name only\tname' | fzf --layout=reverse --delimiter=$'\t' --with-nth=1 --prompt='queue paths> ' --height=40% --border --header='Controls how checked folders appear in the queued-folder pane.' || true)"
-  [[ -n "$selected" ]] && profile_queue_path_display="${selected##*$'\t'}"
+    $'Folder name only\tname' | run_fzf --layout=reverse --delimiter=$'\t' --with-nth=1 --prompt='queue paths> ' --height=40% --border --header='Controls how checked folders appear in the queued-folder pane.' || true)"
+  [[ -n "$selected" ]] || return 1
+  profile_queue_path_display="${selected##*$'\t'}"
 }
 
 validate_source_dir() {
@@ -233,7 +265,7 @@ manage_sources() {
   local id="$1" action selection source
   local -a kept_sources
   while true; do
-    action="$(print -rl -- 'Add source folder' 'Remove source folder' 'Done' | fzf --layout=reverse --prompt="sources ($id)> " --height=40% --border || true)"
+    action="$(print -rl -- 'Add source folder' 'Remove source folder' 'Done' | run_fzf --layout=reverse --prompt="sources ($id)> " --height=40% --border || true)"
     case "$action" in
       'Add source folder')
         source="$(prompt_value 'Remote folder (for example: /srv/media)')"
@@ -250,7 +282,7 @@ manage_sources() {
         ;;
       'Remove source folder')
         (( ${#profile_sources[@]} > 1 )) || { print -u2 'A profile needs at least one source folder.'; continue; }
-        selection="$(print -rl -- "${profile_sources[@]}" | fzf --layout=reverse --multi --prompt='remove sources> ' --height=50% --border --header='Tab selects folders to remove.' || true)"
+        selection="$(print -rl -- "${profile_sources[@]}" | run_fzf --layout=reverse --multi --prompt='remove folders> ' --height=50% --border --header='Tab selects folders to remove.' || true)"
         [[ -n "$selection" ]] || continue
         kept_sources=()
         for source in "${profile_sources[@]}"; do
@@ -266,21 +298,30 @@ manage_sources() {
 }
 
 choose_profile() {
-  local last choices selected
+  local last selected id
+  local -a profile_files
   while true; do
+    profile_files=("$PROFILE_DIR"/*.conf(N))
+    if (( ${#profile_files[@]} == 0 )); then
+      print -u2 'No sync servers are configured yet. Let’s add your first one.'
+      new_profile
+      print -r -- "$created_profile_id"
+      return
+    fi
     last=""
     [[ -r "$LAST_PROFILE_FILE" ]] && last="$(<"$LAST_PROFILE_FILE")"
-    choices="$(profile_ids | while IFS= read -r id; do
-      if [[ "$id" == "$last" ]]; then print -r -- "$id"$'\t'"(last used)"; else print -r -- "$id"; fi
-    done)"
-    choices+=$'\n+ Add profile\n* Manage profiles'
     require_fzf
-    selected="$(print -r -- "$choices" | fzf --layout=reverse --prompt='server> ' --height=40% --border --header='Enter selects. Ctrl-C cancels.' || true)"
-    [[ -n "$selected" ]] || exit 0
-    case "$selected" in
-      '+ Add profile') new_profile ;;
-      '* Manage profiles') configure ;;
-      *) print -r -- "${selected%%$'\t'*}"; return ;;
+    selected="$({
+      profile_rows "$last"
+      print -r -- $'__add__\t+ Add profile'
+      print -r -- $'__manage__\t* Manage profiles'
+    } | run_fzf --layout=reverse --delimiter=$'\t' --with-nth=2 --prompt='server> ' --height=40% --border --header='Enter selects. Ctrl-C cancels.' || true)"
+    [[ -n "$selected" ]] || return 1
+    id="${selected%%$'\t'*}"
+    case "$id" in
+      __add__) new_profile ;;
+      __manage__) configure ;;
+      *) print -r -- "$id"; return ;;
     esac
   done
 }
@@ -288,13 +329,13 @@ choose_profile() {
 choose_existing_profile() {
   local selected
   require_fzf
-  selected="$(profile_ids | fzf --layout=reverse --prompt='profile> ' --height=40% --border || true)"
+  selected="$(profile_rows | run_fzf --layout=reverse --delimiter=$'\t' --with-nth=2 --prompt='profile> ' --height=40% --border || true)"
   [[ -n "$selected" ]] || return 1
-  print -r -- "$selected"
+  print -r -- "${selected%%$'\t'*}"
 }
 
 edit_profile() {
-  local id="$1" action raw_sources
+  local id="$1" action
   load_profile "$id"
   while true; do
     require_fzf
@@ -306,30 +347,48 @@ edit_profile() {
       printf '%-28s  %s\t%s\n' 'Toggle --inplace' "$([[ $profile_inplace == 1 ]] && print enabled || print disabled)" toggle_inplace
       printf '%-28s  %s\t%s\n' 'Highlight folder names' "$([[ $profile_path_highlighting == 1 ]] && print enabled || print disabled)" toggle_path_highlighting
       printf '%-28s  %s\t%s\n' 'Queued folder path display' "$(queue_path_display_label)" edit_queue_path_display
-      printf '%-28s\t%s\n' 'Delete profile' delete_profile
       printf '%-28s\t%s\n' 'Done' done
-    } | fzf --layout=reverse --delimiter=$'\t' --with-nth=1 --prompt="settings ($id)> " --height=50% --border || true)"
+    } | run_fzf --layout=reverse --delimiter=$'\t' --with-nth=1 --prompt="settings ($profile_name)> " --height=50% --border || true)"
     case "${action##*$'\t'}" in
       edit_connection)
         profile_name="$(prompt_value 'Display name' "$profile_name")"
         profile_host="$(prompt_value 'SSH host' "$profile_host")"
-        profile_rsync_bin="$(prompt_value 'rsync executable (blank = auto-detect)' "$profile_rsync_bin")"
-        profile_ssh_bin="$(prompt_value 'ssh executable (blank = auto-detect)' "$profile_ssh_bin")"
         write_profile "$id"
+        print -u2 'Connection updated.'
         ;;
       manage_sources) manage_sources "$id" ;;
       edit_executables)
         profile_rsync_bin="$(prompt_value 'rsync executable (blank = auto-detect)' "$profile_rsync_bin")"
         profile_ssh_bin="$(prompt_value 'ssh executable (blank = auto-detect)' "$profile_ssh_bin")"
         write_profile "$id"
+        print -u2 'Executable overrides updated.'
         ;;
-      toggle_deletion) profile_delete=$(( 1 - profile_delete )); write_profile "$id" ;;
-      toggle_inplace) profile_inplace=$(( 1 - profile_inplace )); write_profile "$id" ;;
-      toggle_path_highlighting) profile_path_highlighting=$(( 1 - profile_path_highlighting )); write_profile "$id" ;;
-      edit_queue_path_display) choose_queue_path_display; write_profile "$id" ;;
-      delete_profile)
-        if prompt_yes_no "Delete profile '$id'?" 0; then rm -f -- "$(profile_file "$id")"; fi
-        return
+      toggle_deletion)
+        if (( profile_delete )); then
+          profile_delete=0
+          write_profile "$id"
+          print -u2 'Deletion disabled.'
+        elif prompt_yes_no 'Enable deletion of unmatched local files?' 0; then
+          profile_delete=1
+          write_profile "$id"
+          print -u2 'Deletion enabled. The final transfer review will warn before syncing.'
+        fi
+        ;;
+      toggle_inplace)
+        profile_inplace=$(( 1 - profile_inplace ))
+        write_profile "$id"
+        print -u2 "In-place writes $([[ $profile_inplace == 1 ]] && print enabled || print disabled)."
+        ;;
+      toggle_path_highlighting)
+        profile_path_highlighting=$(( 1 - profile_path_highlighting ))
+        write_profile "$id"
+        print -u2 "Folder-name highlighting $([[ $profile_path_highlighting == 1 ]] && print enabled || print disabled)."
+        ;;
+      edit_queue_path_display)
+        if choose_queue_path_display; then
+          write_profile "$id"
+          print -u2 "Queued folders now use $(queue_path_display_label)."
+        fi
         ;;
       done|'') return ;;
     esac
@@ -341,7 +400,7 @@ configure() {
   ensure_storage
   while true; do
     require_fzf
-    action="$(print -rl -- 'Add profile' 'Edit profile' 'Remove profile' 'Done' | fzf --layout=reverse --prompt='settings> ' --height=40% --border || true)"
+    action="$(print -rl -- 'Add profile' 'Edit profile' 'Remove profile' 'Done' | run_fzf --layout=reverse --prompt='settings> ' --height=40% --border || true)"
     case "$action" in
       'Add profile') new_profile ;;
       'Edit profile') if id="$(choose_existing_profile)"; then edit_profile "$id"; fi ;;
@@ -365,10 +424,225 @@ resolve_program() {
   fi
 }
 
+build_remote_list_command() {
+  local command="" source
+  for source in "${profile_sources[@]}"; do
+    command+="source_root=${(q)source}; "
+    command+='if source_paths="$(find "$source_root" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null)"; then '
+    command+='if [ -n "$source_paths" ]; then '
+    command+='printf "__SYNCPICK_ROOT_OK__\t%s\n" "$source_root"; '
+    command+='printf "%s\n" "$source_paths" | LC_ALL=C sort | while IFS= read -r source_path; do printf "__SYNCPICK_PATH__\t%s\n" "$source_path"; done; '
+    command+='else printf "__SYNCPICK_ROOT_EMPTY__\t%s\n" "$source_root"; fi; '
+    command+='else printf "__SYNCPICK_ROOT_ERROR__\t%s\n" "$source_root"; fi; '
+  done
+  print -r -- "$command"
+}
+
+discover_remote_folders() {
+  local remote_command listing row kind value
+  local -a loaded_sources empty_sources failed_sources unexpected_rows
+  remote_paths=()
+  loaded_sources=()
+  empty_sources=()
+  failed_sources=()
+  unexpected_rows=()
+  remote_command="$(build_remote_list_command)"
+  listing="$("$ssh_bin" "$profile_host" "$remote_command")" || die "Could not list folders on $profile_host. Check the profile and SSH access."
+  for row in ${(f)listing}; do
+    [[ -n "$row" ]] || continue
+    kind="${row%%$'\t'*}"
+    value="${row#*$'\t'}"
+    case "$kind" in
+      __SYNCPICK_ROOT_OK__) loaded_sources+=("$value") ;;
+      __SYNCPICK_ROOT_EMPTY__) empty_sources+=("$value") ;;
+      __SYNCPICK_ROOT_ERROR__) failed_sources+=("$value") ;;
+      __SYNCPICK_PATH__) remote_paths+=("$value") ;;
+      *) unexpected_rows+=("$row") ;;
+    esac
+  done
+  if (( ${#unexpected_rows[@]} )); then
+    die 'The remote shell returned unexpected output while listing folders. Check non-interactive shell startup output.'
+  fi
+  if (( ${#empty_sources[@]} || ${#failed_sources[@]} )); then
+    print -u2 ""
+    print -u2 "Loaded $(( ${#loaded_sources[@]} + ${#empty_sources[@]} )) of ${#profile_sources[@]} source folders."
+    if (( ${#empty_sources[@]} )); then
+      print -u2 'No immediate subfolders were found under:'
+      for value in "${empty_sources[@]}"; do print -u2 "  $value"; done
+    fi
+    if (( ${#failed_sources[@]} )); then
+      print -u2 'Could not read:'
+      for value in "${failed_sources[@]}"; do print -u2 "  $value"; done
+      print -u2 'Run syncpick --configure to check this profile.'
+    fi
+    print -u2 ""
+  fi
+  (( ${#remote_paths[@]} )) || die "No remote folders are available from this profile's source roots."
+}
+
+choose_folders() {
+  local picker_rows selection selected_row preview_window folder_path
+  local -a color_args
+  require_fzf
+  picker_rows="$(for folder_path in "${remote_paths[@]}"; do
+    print -r -- "$folder_path"$'\t'"[folder] $(format_path "$folder_path")"$'\t'"$(queue_path_display "$folder_path")"
+  done)"
+  color_args=()
+  if [[ -z "${NO_COLOR+x}" ]]; then
+    color_args=(--ansi --color='pointer:cyan,marker:green,header:yellow,info:cyan,prompt:cyan,preview-label:yellow')
+  fi
+  preview_window='right,42%,wrap,border-left'
+  (( COLUMNS < 130 )) && preview_window='right,42%,wrap,hidden,border-left'
+  selection="$(print -r -- "$picker_rows" | run_fzf "${color_args[@]}" --layout=reverse --multi --delimiter=$'\t' --with-nth=2 --pointer='>' --marker='✓' --prompt='folders> ' --height=80% --border --header=$'Tab queues. Enter syncs queued folders, or the cursor when none are queued.\nCtrl-P toggles the queue. Destination: '"$destination" --preview='if [ "${FZF_SELECT_COUNT:-0}" -gt 0 ]; then printf "%s\n" {+3}; else printf "No folders queued.\nPress Tab to add one."; fi' --preview-label='Queued folders' --preview-window="$preview_window" --bind='ctrl-p:toggle-preview' || true)"
+  [[ -n "$selection" ]] || { print 'No selection.'; return 1; }
+  selected_paths=()
+  for selected_row in ${(f)selection}; do
+    selected_paths+=("${selected_row%%$'\t'*}")
+  done
+}
+
+check_destination_collisions() {
+  local folder_path name name_key first index
+  local -A first_by_name reported
+  local -a collisions
+  first_by_name=()
+  reported=()
+  collisions=()
+  for folder_path in "${selected_paths[@]}"; do
+    name="${folder_path##*/}"
+    name_key="${name:l}"
+    first="${first_by_name[$name_key]-}"
+    if [[ -n "$first" ]]; then
+      if [[ -z "${reported[$name_key]-}" ]]; then
+        collisions+=("$name" "$first")
+        reported[$name_key]=1
+      fi
+      collisions+=("$name" "$folder_path")
+    else
+      first_by_name[$name_key]="$folder_path"
+    fi
+  done
+  (( ${#collisions[@]} == 0 )) && return 0
+  print -u2 'Cannot safely continue: multiple selections map to the same local folder.'
+  for (( index = 1; index <= ${#collisions[@]}; index += 2 )); do
+    print -u2 "  ${collisions[index]}: ${collisions[index + 1]}"
+  done
+  print -u2 'Deselect a duplicate folder name or use a separate destination.'
+  return 1
+}
+
+print_transfer_review() {
+  local folder_path
+  (( dry_run )) && print 'Ready to preview' || print 'Ready to sync'
+  print ""
+  if (( delete_files )); then
+    print 'WARNING: deletion is enabled.'
+    print 'Files absent from a remote source may be removed from its local folder.'
+    print ""
+  fi
+  if (( inplace )); then
+    print 'WARNING: in-place writes are enabled.'
+    print 'Destination files may be modified directly during transfer.'
+    print ""
+  fi
+  print "Server:       $profile_name ($profile_host)"
+  print "Folders:      ${#selected_paths[@]}"
+  print "Destination:  $destination"
+  (( dry_run )) && print 'Mode:         dry run' || print 'Mode:         real sync'
+  (( delete_files )) && print 'Deletion:     enabled (--delete)' || print 'Deletion:     disabled'
+  (( inplace )) && print 'Writes:       in place' || print 'Writes:       temporary files (safer)'
+  print ""
+  (( dry_run )) && print 'Would sync:' || print 'Will sync:'
+  for folder_path in "${selected_paths[@]}"; do print "  $folder_path"; done
+}
+
+format_duration() {
+  local total="$1"
+  if (( total >= 3600 )); then
+    printf '%dh %dm %ds' $(( total / 3600 )) $(( total % 3600 / 60 )) $(( total % 60 ))
+  elif (( total >= 60 )); then
+    printf '%dm %ds' $(( total / 60 )) $(( total % 60 ))
+  else
+    printf '%ds' "$total"
+  fi
+}
+
+run_transfers() {
+  local total=${#selected_paths[@]} completed=0 index=1 folder_path transfer_code=0
+  local started_at=$SECONDS elapsed operation current_verb retry_label interrupted=0
+  local -a rsync_args
+  rsync_args=(-aP -e "$ssh_bin" --protect-args)
+  (( dry_run )) && rsync_args=(-n "${rsync_args[@]}")
+  (( delete_files )) && rsync_args+=(--delete-delay)
+  (( inplace )) && rsync_args+=(--inplace)
+  (( dry_run )) && operation='Previewing' || operation='Syncing'
+  (( dry_run )) && current_verb='Previewed' || current_verb='Completed'
+  (( dry_run )) && retry_label='Retry this preview?' || retry_label='Retry this folder?'
+  trap 'interrupted=1' INT TERM
+  while (( index <= total )); do
+    folder_path="${selected_paths[index]}"
+    print ""
+    print "$operation folder $index of $total"
+    print "Remote:       $folder_path"
+    print "Destination:  $destination"
+    print ""
+    if "$rsync_bin" "${rsync_args[@]}" "${profile_host}:${folder_path}" "$destination"; then
+      (( completed++ ))
+      print ""
+      print "$current_verb folder $index of $total."
+      (( index++ ))
+      continue
+    else
+      transfer_code=$?
+    fi
+    if (( interrupted || transfer_code == 130 || transfer_code == 143 )); then
+      interrupted=1
+      break
+    fi
+    print -u2 ""
+    print -u2 "rsync failed for $folder_path with status $transfer_code."
+    if (( ! assume_yes )) && prompt_yes_no "$retry_label" 0; then
+      continue
+    fi
+    break
+  done
+  trap - INT TERM
+  elapsed=$(( SECONDS - started_at ))
+  print ""
+  if (( completed == total )); then
+    (( dry_run )) && print 'Dry run complete' || print 'Sync complete'
+    print ""
+    print "Folders:      $completed of $total"
+    print "Elapsed:      $(format_duration "$elapsed")"
+    print "Destination:  $destination"
+    return 0
+  fi
+  (( interrupted )) && print 'Sync interrupted' || print 'Sync incomplete'
+  print ""
+  print "Completed:    $completed of $total"
+  print "Failed:       ${selected_paths[index]}"
+  print "Not started:  $(( total - index ))"
+  print "Elapsed:      $(format_duration "$elapsed")"
+  print "Destination:  $destination"
+  (( interrupted )) && return 130
+  (( transfer_code )) || transfer_code=1
+  return "$transfer_code"
+}
+
+choose_post_transfer_action() {
+  local selected action
+  require_fzf
+  selected="$(print -rl -- $'exit\tExit' $'more\tSync more from this server' | run_fzf --layout=reverse --delimiter=$'\t' --with-nth=2 --prompt='complete> ' --height=30% --border --header="Transfer complete for $profile_name." || true)"
+  [[ -n "$selected" ]] || return 1
+  action="${selected%%$'\t'*}"
+  [[ "$action" == more ]]
+}
+
 while (( $# > 0 )); do
   case "$1" in
     -n|--dry-run) dry_run=1 ;;
     -y|--yes) assume_yes=1 ;;
+    --stay) stay_open=1 ;;
     --delete) delete_files=1 ;;
     --no-delete) delete_files=0 ;;
     --inplace) inplace=1 ;;
@@ -389,51 +663,32 @@ done
 ensure_storage
 [[ -d "$destination" ]] || die "Destination does not exist or is not a directory: $destination"
 [[ -w "$destination" ]] || die "Destination is not writable: $destination"
+destination="${destination:A}"
 
-profile_id="${requested_profile:-$(choose_profile)}"
+if [[ -n "$requested_profile" ]]; then
+  profile_id="$requested_profile"
+elif ! profile_id="$(choose_profile)"; then
+  exit 0
+fi
 load_profile "$profile_id"
 ssh_bin="$(resolve_program "$profile_ssh_bin" ssh)"
 rsync_bin="$(resolve_program "$profile_rsync_bin" rsync)"
-remote_find_command="find"
-for source in "${profile_sources[@]}"; do
-  remote_find_command+=" ${(q)source}"
-done
-remote_find_command+=" -mindepth 1 -maxdepth 1 -type d -printf '%p\\n' 2>/dev/null | sort"
-remote_paths="$("$ssh_bin" "$profile_host" "$remote_find_command")" || die "Could not list folders on $profile_host. Check the profile and SSH access."
-[[ -n "$remote_paths" ]] || die "No remote folders found in this profile's source roots."
-
-require_fzf
-picker_rows="$(for path in ${(f)remote_paths}; do
-  print -r -- "$path"$'\t'"[folder] $(format_path "$path")"$'\t'"$(queue_path_display "$path")"
-done)"
-selection="$(print -r -- "$picker_rows" | fzf --ansi --layout=reverse --multi --delimiter=$'\t' --with-nth=2 --pointer='>' --marker='✓' --color='pointer:cyan,marker:green,header:yellow,info:cyan,prompt:cyan,preview-label:yellow' --prompt='syncpick> ' --height=80% --border --header=$'Tab adds/removes a ✓. Enter syncs only ✓ items; if none are checked, it syncs the cursor item.\nCtrl-P shows/hides the queued-folder pane. Destination: '"$destination" --preview='printf "%s\n" {+3}' --preview-label='Queued folders' --preview-window='right,42%,wrap,border-left' --bind='ctrl-p:toggle-preview' || true)"
-[[ -n "$selection" ]] || { print 'No selection.'; exit 0; }
-selected_paths=()
-for selected_row in ${(f)selection}; do
-  selected_paths+=("${selected_row%%$'\t'*}")
-done
-
 delete_files="${delete_files:-$profile_delete}"
 inplace="${inplace:-$profile_inplace}"
-print 'Will sync:'
-for path in "${selected_paths[@]}"; do print "  $path"; done
-print ""
-print "Server:      $profile_name ($profile_host)"
-print "Destination: $destination"
-(( dry_run )) && print 'Mode:        dry run' || print 'Mode:        real sync'
-(( delete_files )) && print 'Deletion:    enabled (--delete)' || print 'Deletion:    disabled'
-(( inplace )) && print 'Writes:      in place' || print 'Writes:      temporary files (safer)'
-if (( ! assume_yes )); then
-  prompt_yes_no 'Proceed?' 0 || { print 'Cancelled.'; exit 0; }
-fi
-
-rsync_args=(-aP -e "$ssh_bin" --protect-args)
-(( dry_run )) && rsync_args=(-n "${rsync_args[@]}")
-(( delete_files )) && rsync_args+=(--delete-delay)
-(( inplace )) && rsync_args+=(--inplace)
-for path in "${selected_paths[@]}"; do
-  print ""
-  print "Syncing $path"
-  "$rsync_bin" "${rsync_args[@]}" "${profile_host}:${path}" "$destination"
+while true; do
+  discover_remote_folders
+  choose_folders || exit 0
+  check_destination_collisions || exit 1
+  print_transfer_review
+  if (( ! dry_run && ! assume_yes )); then
+    prompt_yes_no 'Proceed?' 0 || { print 'Cancelled.'; exit 0; }
+  fi
+  if run_transfers; then
+    print -r -- "$profile_id" > "$LAST_PROFILE_FILE"
+  else
+    transfer_code=$?
+    exit "$transfer_code"
+  fi
+  (( stay_open )) || exit 0
+  choose_post_transfer_action || exit 0
 done
-print -r -- "$profile_id" > "$LAST_PROFILE_FILE"

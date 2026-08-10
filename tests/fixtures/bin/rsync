@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+log_dir=${SYNCPICK_TEST_LOG_DIR:?}
+mkdir -p "$log_dir"
+count_file="$log_dir/rsync.count"
+count=0
+if [ -f "$count_file" ]; then
+  count=$(cat "$count_file")
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > "$count_file"
+printf '%s\n' "$@" > "$log_dir/rsync-$count.args"
+
+printf '%s\n' 'sending incremental file list' 'example/file.mkv' '1,024 100% 1.00MB/s 0:00:00'
+
+result=0
+if [ -n "${SYNCPICK_TEST_RSYNC_STATUS_FILE:-}" ] && [ -f "$SYNCPICK_TEST_RSYNC_STATUS_FILE" ]; then
+  result=$(sed -n "${count}p" "$SYNCPICK_TEST_RSYNC_STATUS_FILE")
+  result=${result:-0}
+fi
+exit "$result"

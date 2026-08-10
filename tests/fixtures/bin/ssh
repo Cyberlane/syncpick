@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+log_dir=${SYNCPICK_TEST_LOG_DIR:?}
+mkdir -p "$log_dir"
+count_file="$log_dir/ssh.count"
+count=0
+if [ -f "$count_file" ]; then
+  count=$(cat "$count_file")
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > "$count_file"
+printf '%s\n' "$@" > "$log_dir/ssh-$count.args"
+
+if [ "${SYNCPICK_TEST_SSH_EXECUTE:-0}" = 1 ]; then
+  exec /bin/sh -c "${2:-}"
+fi
+
+case "${2:-}" in
+  *'test -d'*) exit "${SYNCPICK_TEST_VALIDATE_STATUS:-0}" ;;
+esac
+
+if [ -n "${SYNCPICK_TEST_SSH_OUTPUT_FILE:-}" ]; then
+  cat "$SYNCPICK_TEST_SSH_OUTPUT_FILE"
+else
+  printf '%s\n' \
+    '__SYNCPICK_ROOT_OK__	/srv/media' \
+    '__SYNCPICK_PATH__	/srv/media/Example'
+fi
+exit "${SYNCPICK_TEST_SSH_STATUS:-0}"

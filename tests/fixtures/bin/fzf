@@ -1,0 +1,58 @@
+#!/bin/sh
+set -eu
+
+prompt=unknown
+for argument in "$@"; do
+  case "$argument" in
+    --prompt=*) prompt=${argument#--prompt=} ;;
+  esac
+done
+
+case "$prompt" in
+  server*) key=server ;;
+  profile*) key=profile ;;
+  folders*) key=folders ;;
+  settings\ \(*) key=profile_settings ;;
+  settings*) key=settings ;;
+  sources*) key=sources ;;
+  remove\ folders*) key=remove_folders ;;
+  queue\ paths*) key=queue_paths ;;
+  complete*) key=complete ;;
+  *) key=unknown ;;
+esac
+
+log_dir=${SYNCPICK_TEST_LOG_DIR:?}
+response_dir=${SYNCPICK_TEST_RESPONSE_DIR:?}
+mkdir -p "$log_dir"
+count_file="$log_dir/fzf-$key.count"
+count=0
+if [ -f "$count_file" ]; then
+  count=$(cat "$count_file")
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > "$count_file"
+
+input=$(cat)
+printf '%s\n' "$input" > "$log_dir/fzf-$key-$count.input"
+printf '%s\n' "$@" > "$log_dir/fzf-$key-$count.args"
+
+pattern=__FIRST__
+if [ -f "$response_dir/$key" ]; then
+  pattern=$(sed -n "${count}p" "$response_dir/$key")
+fi
+
+case "$pattern" in
+  __CANCEL__) exit 130 ;;
+  __FIRST__)
+    printf '%s\n' "$input" | sed -n '/./{p;q;}'
+    exit 0
+    ;;
+esac
+
+old_ifs=$IFS
+IFS='|'
+set -f
+for match in $pattern; do
+  printf '%s\n' "$input" | grep -F -- "$match" || true
+done
+IFS=$old_ifs
