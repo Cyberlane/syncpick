@@ -3,6 +3,12 @@
 All notable changes are documented here. This project follows semantic
 versioning.
 
+## [0.2.2] - 2026-08-10
+
+- Fixed Vim navigation by starting every picker in a visible NORMAL mode where
+  `j`/`k`, `g`/`G`, and `Ctrl-D`/`Ctrl-U` navigate directly. `i` and `/` enter
+  filtering mode, while `Esc` returns to navigation.
+
 ## [0.2.1] - 2026-08-10
 
 - Added Vim-style navigation across every picker: `Ctrl-J`/`Ctrl-K` move one

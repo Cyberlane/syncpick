@@ -2,7 +2,7 @@
 # syncpick — choose remote folders and copy them locally with rsync.
 set -euo pipefail
 
-VERSION="0.2.1"
+VERSION="0.2.2"
 APP_NAME="syncpick"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_NAME"
 PROFILE_DIR="$CONFIG_HOME/profiles"
@@ -57,7 +57,15 @@ require_fzf() {
 
 run_fzf() {
   local -a navigation_args
-  navigation_args=(--bind='ctrl-j:down,ctrl-k:up,ctrl-d:half-page-down,ctrl-u:half-page-up')
+  navigation_args=(
+    --disabled
+    --border-label=' NORMAL  j/k move  g/G ends  i search  q quit '
+    --border-label-pos=2
+    --bind='j:down,k:up,g:first,G:last,ctrl-d:half-page-down,ctrl-u:half-page-up,q:abort'
+    --bind='i:enable-search+change-border-label( INSERT  type to filter  Esc normal )+unbind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
+    --bind='/:clear-query+enable-search+change-border-label( INSERT  type to filter  Esc normal )+unbind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
+    --bind='esc:disable-search+change-border-label( NORMAL  j/k move  g/G ends  i search  q quit )+rebind(j,k,g,G,i,/,q,ctrl-d,ctrl-u)'
+  )
   if [[ -n "${NO_COLOR+x}" ]]; then
     command fzf "${navigation_args[@]}" --no-color --no-bold "$@"
   else
@@ -495,7 +503,7 @@ choose_folders() {
   fi
   preview_window='right,42%,wrap,border-left'
   (( COLUMNS < 130 )) && preview_window='right,42%,wrap,hidden,border-left'
-  selection="$(print -r -- "$picker_rows" | run_fzf "${color_args[@]}" --layout=reverse --multi --delimiter=$'\t' --with-nth=2 --pointer='>' --marker='✓' --prompt='folders> ' --height=80% --border --header=$'Tab queues. Enter syncs queued folders, or the cursor when none are queued.\nCtrl-J/K moves. Ctrl-D/U pages. Ctrl-P toggles the queue. Destination: '"$destination" --preview='if [ "${FZF_SELECT_COUNT:-0}" -gt 0 ]; then printf "%s\n" {+3}; else printf "No folders queued.\nPress Tab to add one."; fi' --preview-label='Queued folders' --preview-window="$preview_window" --bind='ctrl-p:toggle-preview' || true)"
+  selection="$(print -r -- "$picker_rows" | run_fzf "${color_args[@]}" --layout=reverse --multi --delimiter=$'\t' --with-nth=2 --pointer='>' --marker='✓' --prompt='folders> ' --height=80% --border --header=$'Tab queues. Enter syncs queued folders, or the cursor when none are queued.\nj/k moves. i or / searches. Esc returns to navigation. Ctrl-P toggles the queue. Destination: '"$destination" --preview='if [ "${FZF_SELECT_COUNT:-0}" -gt 0 ]; then printf "%s\n" {+3}; else printf "No folders queued.\nPress Tab to add one."; fi' --preview-label='Queued folders' --preview-window="$preview_window" --bind='ctrl-p:toggle-preview' || true)"
   [[ -n "$selection" ]] || { print 'No selection.'; return 1; }
   selected_paths=()
   for selected_row in ${(f)selection}; do

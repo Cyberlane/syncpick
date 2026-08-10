@@ -79,9 +79,12 @@ marks folders queued to sync: after marking one or more folders with `Tab`, only
 those checked folders transfer. If nothing is checked, pressing Enter transfers
 the cursor folder. The queue pane says explicitly when nothing is checked, and
 the confirmation screen always lists exactly what will sync.
-Use `Ctrl-J`/`Ctrl-K` to move down and up, or `Ctrl-D`/`Ctrl-U` to move half a
-page at a time. These Vim-style bindings work in every picker while plain letter
-keys remain available for fuzzy searching.
+Every picker starts in **NORMAL** mode. Use `j`/`k` to move down and up, `g`/`G`
+to jump to the first or last item, and `Ctrl-D`/`Ctrl-U` to move half a page.
+Press `i` to filter the current list, or `/` to start a fresh search; the border
+label changes to **INSERT** while you type. Press `Esc` to return to navigation,
+`q` to cancel from NORMAL mode, or `Ctrl-C` to cancel from either mode. Arrow
+keys continue to work in both modes.
 The parent portion of each path is muted and its final folder name highlighted
 by default; disable that per profile under **Highlight folder names** in
 `syncpick --configure` if you prefer plain paths. Under **Queued folder path
