@@ -11,7 +11,7 @@ remote folders you want, and sync them into a local directory.
 - Zsh
 - `ssh` with an already-working authentication setup
 - `rsync` (3.x recommended)
-- [`fzf`](https://github.com/junegunn/fzf)
+- [`fzf`](https://github.com/junegunn/fzf) 0.46 or newer
 
 syncpick works on macOS and Linux when these tools are available. It discovers
 executables through `PATH`; a profile can override the `ssh` or `rsync` path.
@@ -45,26 +45,28 @@ For an optional `sp` shorthand command:
 
 ## Quick start
 
-Create your first server profile:
-
-```sh
-syncpick --init
-```
-
-Setup asks for only a server name, its SSH host, and the remote folder roots to
-browse. syncpick auto-detects `ssh` and `rsync` and starts with safe transfer
-defaults. Use `syncpick --configure` later for executable overrides, deletion,
-or in-place-write preferences. The source-folder manager adds and removes one
-path at a time and verifies new paths over SSH when possible.
-
-Then run syncpick in the directory where copies should go:
+Run syncpick in the directory where copies should go:
 
 ```sh
 cd ~/Downloads
 syncpick
 ```
 
-The server picker remembers the last successfully synced profile. Use
+On the first run, syncpick opens guided setup automatically. Setup asks for
+only a server name, its SSH host, and the remote folder roots to browse. You
+can also start setup explicitly:
+
+```sh
+syncpick --init
+```
+
+syncpick auto-detects `ssh` and `rsync` and starts with safe transfer defaults.
+Use `syncpick --configure` later for executable overrides, deletion, or
+in-place-write preferences. The source-folder manager adds and removes one
+path at a time and verifies new paths over SSH when possible.
+
+The server picker shows friendly display names alongside their command-line
+profile IDs and remembers the last successfully used profile. Use
 `syncpick --configure` to add, edit, or remove profiles, or select one directly:
 
 ```sh
@@ -75,7 +77,8 @@ syncpick --dry-run
 The folder picker lists directories only. `>` is the navigation cursor and `✓`
 marks folders queued to sync: after marking one or more folders with `Tab`, only
 those checked folders transfer. If nothing is checked, pressing Enter transfers
-the cursor folder; the confirmation screen always lists exactly what will sync.
+the cursor folder. The queue pane says explicitly when nothing is checked, and
+the confirmation screen always lists exactly what will sync.
 The parent portion of each path is muted and its final folder name highlighted
 by default; disable that per profile under **Highlight folder names** in
 `syncpick --configure` if you prefer plain paths. Under **Queued folder path
@@ -84,15 +87,53 @@ display**, choose whether the queue shows full paths, shortened paths such as
 queue whenever it is enabled.
 
 For long lists, the right-hand **Queued folders** pane shows every checked
-folder as you select it. Press `Ctrl-P` to hide or restore that pane.
+folder as you select it. Press `Ctrl-P` to hide or restore that pane. The pane
+starts hidden in narrower terminals so the folder list remains usable.
+
+syncpick resolves the destination to an absolute path before showing it. If
+two selected remote folders would map to the same local folder name, syncpick
+stops before rsync can merge them. Remote source roots are checked separately;
+unreadable and empty roots are reported instead of being silently omitted.
+
+Set [`NO_COLOR`](https://no-color.org/) to disable path and picker colors:
+
+```sh
+NO_COLOR=1 syncpick
+```
+
+## Transfer progress
+
+During a transfer, syncpick keeps the selected source, absolute destination,
+and overall folder count visible around rsync's per-file progress:
+
+```text
+Syncing folder 2 of 4
+Remote:       /srv/media/example
+Destination:  /Users/you/Downloads
+```
+
+Every run ends with an explicit success, failure, or interruption summary. If
+rsync fails, syncpick reports the completed and remaining folder counts and
+offers to retry the exact failed folder unless `--yes` is active. Successful
+one-shot runs exit by default and leave the summary in terminal history.
+
+For repeated work with the same server and destination, use `--stay`:
+
+```sh
+syncpick --stay ~/Downloads
+```
+
+After each successful run, Exit remains the default action; choosing **Sync
+more from this server** refreshes the remote folder list before reopening the
+picker.
 
 ## Safety defaults
 
 syncpick asks before a real transfer. It does **not** delete unmatched local
 files, and uses rsync's safer temporary-file behavior by default.
 
-For a non-interactive run, pass `--yes` (or `-y`) to accept the final transfer
-summary automatically:
+Pass `--yes` (or `-y`) to skip only the final real-transfer confirmation. Folder
+selection and the transfer summary remain visible:
 
 ```sh
 syncpick --server home-nas --yes ~/Downloads
@@ -106,7 +147,8 @@ syncpick --delete
 syncpick --inplace
 ```
 
-Use `--dry-run` before a large or destructive transfer.
+Use `--dry-run` before a large or destructive transfer. Dry runs show the full
+review and rsync preview but do not ask for a redundant confirmation.
 
 ## Configuration and privacy
 
