@@ -3,6 +3,12 @@
 All notable changes are documented here. This project follows semantic
 versioning.
 
+## [0.2.1] - 2026-08-10
+
+- Added Vim-style navigation across every picker: `Ctrl-J`/`Ctrl-K` move one
+  item and `Ctrl-D`/`Ctrl-U` move half a page while letter keys remain available
+  for fuzzy searching.
+
 ## [0.2.0] - 2026-08-10
 
 - Added automatic first-run setup and friendly profile names throughout the
