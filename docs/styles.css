@@ -151,7 +151,7 @@ h1 span { color: var(--green); }
 .mode-card { min-width: 0; padding: 1.7rem; border: 1px solid var(--line); border-radius: .9rem; background: linear-gradient(145deg, rgba(16, 39, 33, .82), rgba(9, 24, 20, .85)); }
 .mode-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.8rem; color: var(--muted); font: 600 .75rem/1 var(--mono); }
 .mode-pill { padding: .32rem .55rem; border: 1px solid rgba(131,233,191,.35); border-radius: .35rem; color: var(--green); font-weight: 750; letter-spacing: .1em; }
-.insert-card .mode-pill { border-color: rgba(241,196,119,.35); color: var(--amber); }
+.search-card .mode-pill { border-color: rgba(241,196,119,.35); color: var(--amber); }
 .key-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid #1d3b33; border-radius: .55rem; background: #1d3b33; }
 .key-grid > div { display: flex; align-items: center; gap: .8rem; min-width: 0; padding: .8rem; background: #0b1b17; }
 kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; min-height: 29px; padding: .15rem .42rem; border: 1px solid #3a5f54; border-bottom-width: 2px; border-radius: .32rem; background: #10251f; color: var(--text); font-size: .68rem; white-space: nowrap; box-shadow: 0 2px 0 #05100d; }
@@ -160,8 +160,8 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .search-prompt { margin-right: .7rem; color: var(--amber); }
 .search-text { color: var(--text); }
 .caret { width: 7px; height: 16px; margin-left: 2px; background: var(--amber); animation: blink 1.2s steps(1) infinite; }
-.insert-card ul { display: grid; gap: .9rem; margin: 0; padding: 0; color: var(--muted); list-style: none; }
-.insert-card li { display: flex; align-items: center; gap: .7rem; font-size: .86rem; }
+.search-card ul { display: grid; gap: .9rem; margin: 0; padding: 0; color: var(--muted); list-style: none; }
+.search-card li { display: flex; align-items: center; gap: .7rem; font-size: .86rem; }
 
 .safety-section { display: grid; grid-template-columns: .85fr 1.15fr; gap: clamp(4rem, 9vw, 8rem); align-items: start; }
 .safety-copy { position: sticky; top: 3rem; }

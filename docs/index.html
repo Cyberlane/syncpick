@@ -35,7 +35,7 @@
     <main id="main">
       <section class="hero" id="top">
         <div class="hero-copy">
-          <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Open source · v0.2.3</div>
+          <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Open source · v0.3.0</div>
           <h1>Pick remote folders.<br><span>Sync them safely.</span></h1>
           <p class="hero-lede">A focused <code>fzf</code> interface for choosing folders over SSH and copying them locally with <code>rsync</code>. No service, no database, no lock-in—just one small Zsh script.</p>
           <div class="hero-actions">
@@ -45,7 +45,7 @@
           <ul class="hero-facts" aria-label="Project highlights">
             <li><span aria-hidden="true">✓</span> macOS &amp; Linux</li>
             <li><span aria-hidden="true">✓</span> Safe defaults</li>
-            <li><span aria-hidden="true">✓</span> Vim navigation</li>
+            <li><span aria-hidden="true">✓</span> Instant fuzzy search</li>
           </ul>
         </div>
 
@@ -55,10 +55,10 @@
             <div class="terminal-titlebar">
               <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
               <span>syncpick — folders</span>
-              <span class="terminal-mode">NORMAL</span>
+              <span class="terminal-mode">READY</span>
             </div>
             <div class="terminal-body" aria-hidden="true">
-              <div class="terminal-help">j/k move · g/G ends · i search · q quit</div>
+              <div class="terminal-help">type to filter · ↑/↓ or Ctrl-J/K move · Esc cancels</div>
               <div class="terminal-list">
                 <div class="terminal-row"><span class="cursor">›</span><span class="folder">[folder]</span><span class="muted">/srv/media/</span><strong>Films</strong></div>
                 <div class="terminal-row selected"><span class="cursor">›</span><span class="folder">[folder]</span><span class="muted">/srv/media/</span><strong>Music</strong><span class="queued">✓ queued</span></div>
@@ -104,7 +104,7 @@
           </li>
           <li>
             <span class="step-number">02</span>
-            <div><h3>Pick</h3><p>Browse immediate subfolders, move with Vim keys, and queue one or many with Tab.</p></div>
+            <div><h3>Pick</h3><p>Type to filter immediate subfolders, then queue one or many with Tab.</p></div>
             <code>sp ~/Downloads</code>
           </li>
           <li>
@@ -117,31 +117,30 @@
 
       <section class="section controls-section" id="controls" aria-labelledby="controls-title">
         <div class="section-heading compact">
-          <p class="section-kicker">Modal navigation</p>
-          <h2 id="controls-title">Navigation when you want it. Search when you need it.</h2>
-          <p>Every picker opens in NORMAL mode with the query field hidden. Ordinary typing is ignored until you deliberately enter INSERT.</p>
+          <p class="section-kicker">Keyboard controls</p>
+          <h2 id="controls-title">Type, move, and choose without changing modes.</h2>
+          <p>Every picker is ready to filter immediately and uses the familiar controls built into <code>fzf</code>.</p>
         </div>
         <div class="mode-grid">
-          <article class="mode-card normal-card">
-            <div class="mode-card-header"><span class="mode-pill">NORMAL</span><span>Move &amp; act</span></div>
+          <article class="mode-card browse-card">
+            <div class="mode-card-header"><span class="mode-pill">BROWSE</span><span>Move &amp; act</span></div>
             <div class="key-grid">
-              <div><kbd>j</kbd><span>Down</span></div><div><kbd>k</kbd><span>Up</span></div>
-              <div><kbd>g</kbd><span>First</span></div><div><kbd>G</kbd><span>Last</span></div>
-              <div><kbd>Ctrl D</kbd><span>½ page down</span></div><div><kbd>Ctrl U</kbd><span>½ page up</span></div>
-              <div><kbd>i</kbd><span>Filter</span></div><div><kbd>/</kbd><span>Fresh search</span></div>
-              <div><kbd>q</kbd><span>Cancel</span></div><div><kbd>Tab</kbd><span>Queue</span></div>
+              <div><kbd>↑ ↓</kbd><span>Move</span></div><div><kbd>Ctrl J/K</kbd><span>Move</span></div>
+              <div><kbd>PgUp</kbd><span>Page up</span></div><div><kbd>PgDn</kbd><span>Page down</span></div>
+              <div><kbd>Enter</kbd><span>Choose</span></div><div><kbd>Esc</kbd><span>Cancel</span></div>
+              <div><kbd>Tab</kbd><span>Queue</span></div><div><kbd>Ctrl P</kbd><span>Queue pane</span></div>
             </div>
           </article>
-          <article class="mode-card insert-card">
-            <div class="mode-card-header"><span class="mode-pill">INSERT</span><span>Fuzzy filter</span></div>
+          <article class="mode-card search-card">
+            <div class="mode-card-header"><span class="mode-pill">FILTER</span><span>Fuzzy search</span></div>
             <div class="search-demo" aria-hidden="true">
               <span class="search-prompt">folders&gt;</span><span class="search-text">pro</span><span class="caret"></span>
             </div>
             <ul>
-              <li><kbd>i</kbd> keeps the current query</li>
-              <li><kbd>/</kbd> starts a fresh query</li>
-              <li><kbd>Esc</kbd> hides input and returns to NORMAL</li>
-              <li>Arrow keys work in both modes</li>
+              <li>Start typing immediately</li>
+              <li><kbd>Ctrl U</kbd> clears the query</li>
+              <li><kbd>Backspace</kbd> edits the query</li>
+              <li><kbd>Esc</kbd> cancels from every picker</li>
             </ul>
           </article>
         </div>
@@ -171,7 +170,7 @@
           <article><span>01</span><h3>One Zsh script</h3><p>No daemon or background service. Read it, move it, or remove it whenever you like.</p></article>
           <article><span>02</span><h3>Your SSH setup</h3><p>Profiles store host references and roots—not passwords, keys, or passphrases.</p></article>
           <article><span>03</span><h3>Plain local config</h3><p>XDG-based profile and state files stay in your user directories with private permissions.</p></article>
-          <article><span>04</span><h3>Standard tools</h3><p>Built around Zsh, SSH, rsync, and fzf 0.59 or newer on macOS and Linux.</p></article>
+          <article><span>04</span><h3>Standard tools</h3><p>Built around Zsh, SSH, rsync, and fzf 0.46 or newer on macOS and Linux.</p></article>
         </div>
       </section>
 

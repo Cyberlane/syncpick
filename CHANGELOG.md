@@ -3,6 +3,14 @@
 All notable changes are documented here. This project follows semantic
 versioning.
 
+## [0.3.0] - 2026-08-22
+
+- Removed the modal Vim-style picker state and restored immediate fuzzy
+  filtering, native `fzf` navigation and query editing, and consistent `Esc`
+  cancellation. Folder-specific `Tab`, `Enter`, and `Ctrl-P` controls remain.
+- Lowered the minimum supported fzf version back to 0.46 now that inputless
+  NORMAL mode is no longer required.
+
 ## [0.2.3] - 2026-08-10
 
 - Hid and disabled query input in NORMAL mode so ordinary typing is ignored;

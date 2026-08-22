@@ -14,7 +14,7 @@ remote folders you want, and sync them into a local directory.
 - Zsh
 - `ssh` with an already-working authentication setup
 - `rsync` (3.x recommended)
-- [`fzf`](https://github.com/junegunn/fzf) 0.59 or newer
+- [`fzf`](https://github.com/junegunn/fzf) 0.46 or newer
 
 syncpick works on macOS and Linux when these tools are available. It discovers
 executables through `PATH`; a profile can override the `ssh` or `rsync` path.
@@ -82,14 +82,10 @@ marks folders queued to sync: after marking one or more folders with `Tab`, only
 those checked folders transfer. If nothing is checked, pressing Enter transfers
 the cursor folder. The queue pane says explicitly when nothing is checked, and
 the confirmation screen always lists exactly what will sync.
-Every picker starts in **NORMAL** mode. Use `j`/`k` to move down and up, `g`/`G`
-to jump to the first or last item, and `Ctrl-D`/`Ctrl-U` to move half a page.
-Ordinary typing is ignored and the query field stays hidden in NORMAL. Press
-`i` to filter the current list, or `/` to start a fresh search; the query field
-appears and the border label changes to **INSERT** while you type. Press `Esc`
-to hide the query field and return to navigation, `q` to cancel from NORMAL
-mode, or `Ctrl-C` to cancel from either mode. Arrow keys continue to work in
-both modes.
+Start typing in any picker to filter its list immediately. Use the arrow keys
+or `Ctrl-J`/`Ctrl-K` to move, `Page Down`/`Page Up` to move by a page, `Enter`
+to choose, and `Esc` or `Ctrl-C` to cancel. These are native `fzf` controls, so
+query editing behaves consistently with other `fzf` tools.
 The parent portion of each path is muted and its final folder name highlighted
 by default; disable that per profile under **Highlight folder names** in
 `syncpick --configure` if you prefer plain paths. Under **Queued folder path
